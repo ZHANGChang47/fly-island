@@ -29,9 +29,9 @@ export const zhCN: FilePreviewText = {
   openExternallyFailed: "无法用系统程序打开该文件",
   noSelection: "当前没有可预览的文件，请先在资源管理器中选中文件。",
   shortcutError: (error) => `预览快捷键未生效：${error}`,
-  settingsHint: "在资源管理器或桌面选中文件后按 Ctrl+Shift+P 快速预览；在全局搜索结果里也可以点预览按钮。",
+  settingsHint: "在资源管理器或桌面选中文件后按空格即可快速预览（也可用 Ctrl+Shift+P）；在全局搜索结果里也可以点预览按钮。",
   formats: "支持 PDF、DOCX、XLSX/CSV、PPTX、Markdown、JPG/PNG 等格式。旧版 DOC/XLS/PPT 请用系统程序打开。",
-  shortcut: "快捷键：Ctrl+Shift+P",
+  shortcut: "快捷键：空格（资源管理器/桌面），或 Ctrl+Shift+P",
 };
 
 export const en: FilePreviewText = {
@@ -47,7 +47,7 @@ export const en: FilePreviewText = {
   openExternallyFailed: "Could not open the file in its system app",
   noSelection: "No file to preview. Select a file in File Explorer first.",
   shortcutError: (error) => `Preview shortcut unavailable: ${error}`,
-  settingsHint: "Select a file in File Explorer or on the desktop and press Ctrl+Shift+P to preview it. Search results also have a preview button.",
+  settingsHint: "Select a file in File Explorer or on the desktop and press Space to preview it (Ctrl+Shift+P also works). Search results also have a preview button.",
   formats: "Supports PDF, DOCX, XLSX/CSV, PPTX, Markdown, JPG/PNG and more. Legacy DOC/XLS/PPT need their system app.",
-  shortcut: "Shortcut: Ctrl+Shift+P",
+  shortcut: "Shortcut: Space (Explorer/desktop), or Ctrl+Shift+P",
 };

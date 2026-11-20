@@ -37,6 +37,9 @@ fn trusted() -> &'static Mutex<HashSet<String>> {
 pub fn init(app: &AppHandle) -> Result<(), String> {
     let _ = current();
     hotkey::init(app);
+    // Space-to-preview in Explorer/desktop via a low-level keyboard hook. Kept
+    // separate from the Ctrl+Shift+P global hotkey, which stays as a fallback.
+    crate::win32::space_preview_hook::init(app);
     Ok(())
 }
 

@@ -1,4 +1,5 @@
-//! Ctrl+Shift+P: preview the file selected in Explorer or on the desktop.
+//! Ctrl+Shift+P fallback hotkey: preview the selected file in Explorer/desktop.
+//! The primary Space shortcut lives in `win32::space_preview_hook`.
 
 use std::sync::OnceLock;
 
