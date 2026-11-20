@@ -1,0 +1,28 @@
+.excel-renderer {
+  min-height: 100%;
+  padding: var(--space-md);
+  background: #fff;
+  color: #1b1b1b;
+  overflow: auto;
+}
+.excel-renderer__status {
+  color: #666;
+  font-size: 13px;
+}
+.excel-renderer__sheet {
+  margin-bottom: var(--space-xl);
+}
+.excel-renderer__sheet h3 {
+  margin: 0 0 var(--space-sm);
+  font-size: 15px;
+}
+.excel-renderer table {
+  border-collapse: collapse;
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+.excel-renderer td, .excel-renderer th {
+  padding: 4px 8px;
+  border: 1px solid #d8d8d8;
+  white-space: nowrap;
+}

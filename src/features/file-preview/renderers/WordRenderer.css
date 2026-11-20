@@ -1,0 +1,19 @@
+.word-renderer {
+  min-height: 100%;
+  padding: var(--space-md);
+  background: #fff;
+  color: #1b1b1b;
+}
+.word-renderer__status {
+  color: #666;
+  font-size: 13px;
+}
+.word-renderer__host {
+  max-width: 900px;
+  margin: 0 auto;
+}
+.word-renderer__document {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.6;
+}

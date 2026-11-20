@@ -1,0 +1,37 @@
+.markdown-renderer {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: var(--space-lg) var(--space-xl);
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.75;
+}
+.markdown-renderer h1, .markdown-renderer h2, .markdown-renderer h3 {
+  color: var(--text-1);
+  line-height: 1.35;
+}
+.markdown-renderer h1 { font-size: 24px; }
+.markdown-renderer h2 { font-size: 20px; }
+.markdown-renderer h3 { font-size: 17px; }
+.markdown-renderer a { color: var(--color-accent); }
+.markdown-renderer pre, .markdown-renderer code {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+}
+.markdown-renderer pre {
+  overflow: auto;
+  padding: var(--space-md);
+  background: var(--color-white-a06);
+  border-radius: var(--corner-md);
+}
+.markdown-renderer table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.markdown-renderer th, .markdown-renderer td {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--color-white-a10);
+  text-align: left;
+}
+.markdown-renderer img { max-width: 100%; }

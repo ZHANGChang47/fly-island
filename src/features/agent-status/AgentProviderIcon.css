@@ -1,0 +1,13 @@
+/* Every source image is a square app tile; round them like the WeChat icon. */
+.agent-provider-icon {
+  display: block;
+  flex: 0 0 auto;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+/* DeepSeek's mark is a transparent PNG; the light tile keeps it readable on the dark card. */
+.agent-provider-icon--dsh {
+  padding: 1px;
+  background: var(--color-white);
+}

@@ -1,0 +1,7 @@
+[package]
+name = "example-hello"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+[dependencies]
+fly-island-plugin-sdk = { path = "../sdk" }

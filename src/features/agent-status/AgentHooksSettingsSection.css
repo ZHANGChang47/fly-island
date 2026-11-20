@@ -1,0 +1,35 @@
+/* An agent's state on the right of its row; one stuck on an error or a stall stands out. */
+.agent-hooks-value {
+  color: var(--color-text-muted);
+  font-size: calc(13px * var(--island-font-scale, 1));
+}
+
+.agent-hooks-value--attention {
+  color: var(--color-warning);
+}
+
+/* Under the card: what the last install said, or that the hooks need installing again. */
+.agent-hooks-message {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.agent-hooks-message svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.agent-hooks-message code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: calc(11px * var(--island-font-scale, 1));
+}
+
+.agent-hooks-message--attention {
+  color: var(--color-warning);
+}
+
+.agent-hooks-message--error {
+  color: var(--color-error-text);
+}

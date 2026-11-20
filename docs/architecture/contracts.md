@@ -1,0 +1,172 @@
+# 对外契约清单
+
+Codex 会话摘要（2026-11-15）：`list_agent_sessions` 可选返回 `lastCompletedAt`（最近显式 `task_complete` 的 Unix 毫秒时间；未知时省略）。前端兼容字段缺失，原有字段、命令名、参数、事件及持久化格式不变。用于识别两次轮询之间完成的一轮，首次看到的完成仅在 15 秒内提醒；不以文件修改时间代替完成时间。
+
+歌词接口兼容扩展（2026-11-15）：`get_lyrics` 的 `query.sourceAppId` 为可缺省字符串，`query.wordFill` 为可缺省布尔值（默认 false）；旧前端不传仍可查询在线歌词。开启逐字填充时优先查找逐字结果，保留第一个行级结果兜底。返回 `source` 新增 `qqmusic` / `soda`，`lrc` 仍为增强 LRC 字符串。缓存可缺省的 `schemaVersion` 新值为 3，旧字段保持可读，详见 [歌词源说明](../lyrics-sources.md)。
+
+纯重构中下列标识不得改变，规则见根目录 [AGENTS.md](../../AGENTS.md#对外契约不得随意变更)。新增契约时同步更新本节。
+
+## localStorage key
+
+`focusd-island-settings.messagePreviewSeconds` 为岛上通知停留时长，3–30 的整数秒，默认 5；旧记录缺失或非法值回退到 5。
+
+`focusd-island-settings` 的待办轮换字段兼容旧记录：`rotateTodos` 默认 false、`showIdleTodoCount` 默认 true、`todoRotationSeconds` 默认 5（1–60）、`todoRotationMode` 默认 `switch`（`switch` / `scroll`）、`todoScrollSpeed` 默认 20（10–40 逻辑像素/秒）。`todoRotationCount` 已移除，旧记录中的该字段忽略且不再写回。轮换候选为全部已开始且未完成的普通待办，按列表顺序显示；缺失或非法设置由 normalize 回退。
+
+待办并行状态兼容扩展（2026-11-15）：开启轮换后，开始任务追加到 `focusd-island-active-todos`（去重的字符串 ID 数组，顺序为开始顺序），倒计时独立保存到 `focusd-island-todo-timers`（`{ todoId, endsAt, durationMinutes, notified }[]`，每项 ID 唯一）。首次读取若新键缺失、JSON 损坏或根类型错误，则从旧 `focusd-island-active-todo` 字符串和 `focusd-island-todo-timer` 单对象兼容读取；新键中的空数组表示已停止，不恢复旧值。非法数组项忽略，通知标记缺失按 false。原待办列表数据格式不变。
+
+新旧键同步写入：第一个开始的活动 ID 作为主任务，旧 `focusd-island-active-todo` 仍写字符串；旧 `focusd-island-todo-timer` 仅保存主任务的计时对象，主任务无计时或没有活动任务时删除。关闭轮换保留主任务，停止其他任务并清除其倒计时；之后开始另一项按原单任务规则替换、清除旧计时并收起岛屿。轮换开启时开始/再来一轮保持展开，再次点击停止仅清除该任务。完成、删除或无效 ID 均会从活动状态及计时中移除；关闭番茄钟清空全部计时但保留活动任务。每轮首次到时前写入 `notified: true`；同一次检查中多项到时一起标记、提醒一次。跨天保留所有计时中或已到时待处理任务的 ID 与结束时间。
+
+| key | 当前定义位置 |
+|---|---|
+| `focusd-island-settings` | `features/appearance/storage.ts` |
+
+| `focusd-island-tuck-line-migration`（`"1"`：细线默认样式迁移完成；已有存档的 edge/hidden 统一改成 line，先保存设置再写标记，无存档只写标记；之后尊重手动选择，失败下次重试） | `features/appearance/storage.ts`、`tuckLineMigration.ts` |
+| `focusd-island-collapsed-text-default-v1`（迁移标记） | `features/appearance/storage.ts` |
+| `focusd-island-color-refresh-v1`（`"1"`：2026-11-13 默认配色刷新完成；无存档或三色已等于新默认值时只写标记、不新建备份，其余旧存档覆盖三色，备份 → 设置 → 标记，重试保留已有备份） | `features/appearance/storage.ts`、`colorRefresh.ts` |
+| `focusd-island-session-sort-recent-v1`（`"1"`：2026-11-13 会话列表默认改为「最近活动」，已存的 `agentSessionSort: "status"` 迁移一次为 `"recent"`；先保存设置再写标记） | `features/appearance/storage.ts` |
+| `focusd-island-color-backup`（`{ islandBackgroundColor, taskTextColor, pulseColor }`，均为大写 `#RRGGBB`；迁移、恢复默认外观和批量改色前保存；回退时与当前三色互换，手动改一个颜色不写） | `features/appearance/storage.ts`、`colorPalette.ts` |
+| `focusd-island-color-presets`（`{ id, islandBackgroundColor, taskTextColor, pulseColor }[]`；id 为字符串，三色均为大写 `#RRGGBB`，最多 8 项、三色组合去重；损坏记录跳过，非法根数据视为空；不复用已退役的 `focusd-island-setting-presets`） | `features/appearance/storage.ts`、`colorPresets.ts` |
+| `focusd-island-setting-presets`（2026-11-09 起不再读写：样式预设已去掉，旧数据留着不动） | — |
+| `focusd-island-todos` | `features/todos/storage.ts` |
+| `focusd-island-active-todo`（主任务 ID 字符串，兼容原单任务格式） | `features/todos/storage.ts` |
+| `focusd-island-active-todos`（全部活动 ID 数组，按开始顺序；无新数据时兼容读取旧单 ID） | `features/todos/storage.ts` |
+| `focusd-island-todo-timer`（主任务倒计时：`{ todoId, endsAt, durationMinutes, notified }`，`endsAt` 为 Unix 毫秒时间；保留原单对象格式） | `features/todos/storage.ts` |
+| `focusd-island-todo-timers`（各任务独立倒计时对象数组；无新数据时兼容读取旧单对象） | `features/todos/storage.ts` |
+| `focusd-island-todo-durations`（各项待办的时长 `{ [todoId]: 1–240 的整数分钟 }`，没有记录或无效按 15 分钟，写入时去掉已删除待办；2026-11-12 起取代所有待办共用的 `focusd-island-todo-duration`，旧 key 不再读取也不删除） | `features/todos/storage.ts` |
+| `focusd-island-current-date` | `features/todos/storage.ts` |
+| `focusd-island-archives` | `features/todos/storage.ts` |
+| `focusd-island-scheduled-todos`（安排在以后日期的待办，`{ id, title, date, createdAt }[]`） | `features/todos/storage.ts` |
+| `focusd-island-daily-note` | `features/todos/storage.ts` |
+| `focusd-island-save-directory` | `features/todos/storage.ts` |
+| `focusd-island-last-saved-signature` | `features/todos/storage.ts` |
+| `focusd-island-position` | `windows/island/storage.ts` |
+| `focusd-island-music-sources`（`{ id, label, archived? }[]`，按顺序；`archived: true` 表示已归档，不出现在顺序里、再次出现时不追加；旧数据无该字段即未归档。2026-11-14 起） | `features/media/storage.ts` |
+| `focusd-island-last-page`（`todo` / `music` / `shelf` / `qq` / `agents` / `translation` 之一，岛上最后打开的页面；收起的岛点文字时回到它。`clipboard` 与 `settings` 不记录；缺失或非法回退 `todo`。2026-11-14 起） | `windows/island/lastPage.ts` |
+| `focusd-island-media-diagnostics-dismissed`（字符串数组，每项为小写 sourceAppId + `\u001f` + 非 ok 的 status；损坏或旧格式回退空数组） | `features/media/storage.ts` |
+| `focusd-island-settings-focus`（主窗口 → 设置窗口的跳转请求） | `windows/settings/storage.ts` |
+| `focusd-island-detached-settings`（`"true"` / `"false"`：设置在独立窗口打开；2026-11-10 起没有或无效时默认独立窗口，已保存的 `"false"` 仍为岛上内嵌，不进外观预设） | `windows/settings/storage.ts` |
+| `focusd-island-position-reset`（设置窗口 → 主窗口：让岛回到主屏顶部居中，`{ requestedAt }`，超过 5 秒的请求忽略） | `windows/settings/storage.ts` |
+| `focusd-island-panel-preview`（设置窗口 → 主窗口：调外观或贴边样式时让岛实时预览，`{ mode, requestedAt }`，`mode` 为 `expanded` / `collapsed` / `tucked`（`tucked` 为 3.1.0 新增，旧格式照常可读），超过 2 秒的请求忽略） | `windows/settings/storage.ts` |
+| `focusd-island-qq-mail-settings` | `features/messages/mail/storage.ts`（`{ accounts: [{ email, host, enabled }] }`，兼容读取旧的单账户 `{ email, enabled }`，解析在 `mailAccounts.ts`） |
+| `focusd-island-qq-mail-remote-images`（2026-11-11 起不再读写：邮件里的远程图片总是加载，已存的值留在原处不删） | 无 |
+| `focusd-island-qq-notifications-enabled` | `features/messages/qq-notifications/storage.ts` |
+| `focusd-island-qq-notification-access-requested` | `features/messages/qq-notifications/storage.ts` |
+| `focusd-island-wechat-reminders-enabled` | `features/messages/wechat/storage.ts` |
+| `focusd-island-wechat-message-preview-enabled`（字符串 `"true"` 开启，缺失或其他值关闭） | `features/messages/wechat/storage.ts` |
+| `focusd-island-wechat-hide-minimized-taskbar`（字符串 `"true"` 开启，缺失或其他值关闭） | `features/messages/wechat/storage.ts` |
+| `focusd-island-translation-settings` | `features/translation/storage.ts` |
+| `focusd-island-agent-approval`（`{ onIsland, whenInFront }`：Agent 的权限请求在岛上审批，默认关；`whenInFront` 为会话窗口在前台时也弹卡片，2026-11-09 起不再是设置项，读取时总按默认（关）；开着时岛屿让审批端点挂起请求） | `features/agent-status/approvals/storage.ts` |
+| `focusd-island-agent-hidden-sessions`（`{ "<provider>:<sessionId>": updatedAt }`：在 Agent 页手动移除的会话，只隐藏不删记录；值是移除时那一轮的开始时间（以前存的是最后写入时间），开始新一轮才自动回来，最多 200 条） | `features/agent-status/hiddenSessions.ts` |
+| `focusd-island-agent-seen-turns`（`{ "<provider>:<sessionId>": 轮次 }`：在 Agent 页看过的会话，轮次是这一轮的开始时间，卡在半路时是最后写入时间；重启岛屿后看过的不再提醒，最多 300 条） | `features/agent-status/unseen.ts` |
+| `focusd-island-agent-session-filters`（2026-11-09 起不再读写：隐藏会话规则已去掉，旧规则不再生效；格式曾为 `[{ kind: "folder" | "prompt", value }]`） | — |
+| 外观主题文件（2026-11-08 起；`fly-island-theme-<日期时间>.json`，写到「下载」文件夹，命令 `save_theme_file`，Rust 端按文件名前缀和内容放行；`{ app: "fly-island", kind: "theme", version: 1, name, exportedAt, appearance }`，`appearance` 只含 `features/appearance/settings.ts` 的 `APPEARANCE_SETTING_KEYS`；导入时只读这些字段，叠在当前设置上经 `normalizeSettings` 校验后存成一个新的样式预设，不自动应用） | `features/appearance/theme.ts` |
+| `focusd-island-locale` | `i18n/index.ts` |
+| `focusd-island-community-invite-seen`（`"true"`：在「关于」里点开过用户交流群；没有或其他值时，岛屿的设置按钮、侧栏「关于」和交流群那一行显示红点。2026-11-12 起） | `features/updater/storage.ts` |
+| `focusd-island-auto-update`（`"false"`：关闭自动更新，只在「关于」里手动检查；缺失或其他值都算开启。开启时启动检查、每 3 小时再查、失败退避重试，下载好后在小岛收起且 1 分钟无交互时自动安装。2026-11-13 起） | `features/updater/storage.ts` |
+| `focusd-island-update-dot-seen`（2026-11-14 已移除：更新红点不再记录已看过，只要有待安装的更新（含安装失败）就显示，直到安装。旧数据不再被读取，可以残留） | 已删除 `features/updater/storage.ts` 中的读写 |
+| `focusd-island-update-channel`（`"stable"` / `"beta"`；3.0.2 及更早的设置写入，现已不读，一律按稳定版检查） | — |
+
+## 媒体诊断命令
+
+新增命令 `get_media_diagnostics()` 返回 `{ players }`：逐会话的 `sourceAppId`、`label`、`hasSession`、`hasTimeline`、`hasPluginTrackId`、`exePath`、`directory`、`version`、`status` 与 `neteasePluginState`（非网易云为 null），并补入正在运行但没有会话的已知播放器。只读检查，不安装插件。`get_media_state` 新增 `hasTimeline` 布尔字段；前端兼容缺少字段的旧状态，估算位置始终保留 false 标记。
+
+## 微信只读探测输出
+
+`examples/wechat_reminder_probe.rs`（2026-11-13 起）在监听或路径解析报错前向标准输出增加一条 `phase: "executableResolution"` JSON：`registryExecutable`、`runningExecutable`、`selectedExecutable` 和 `explicitExecutable` 均为路径字符串或 `null`，分别表示注册表候选、主窗口优先的运行路径、最终采用路径及 `--exe` 参数。原有监听状态、事件计数字段和退出码不变；这条诊断不进入 Tauri 事件或持久化存储。详见 [微信提醒兼容性说明](../wechat-reminder-compatibility.md#只读诊断)。
+
+## 剪贴板命令（2026-11-13）
+
+- `delete_clipboard_history_items({ ids: string[] })` 返回完整历史快照；一次操作最多写盘一次、广播一次 `clipboard-history-changed`，显式选中的收藏也删除；未知或重复 ID 忽略。原 `clear_clipboard_history` 保留原语义。
+- 剪贴板缩略图按需读取（3.1.0）：`clipboard-history.json` 与 `get_clipboard_history` 快照里的 `image.thumbnailDataUrl` 不再写出（字段可选）；缩略图只存在 `clipboard-images/` 的 `-thumb.png`，由新命令 `read_clipboard_history_thumbnail({ id: string })` 返回 PNG data URL，路径限制同下。旧存档首次加载时把内嵌缩略图搬到文件（文件已在则直接去掉内嵌数据；无法写出的保留内嵌，命令原样返回），然后重写一次存档。旧版本读新存档不报错，只是列表里没有缩略图。
+- `read_clipboard_history_image({ id: string })` 返回 PNG data URL；只允许历史条目引用的 `clipboard-images/` 直接子文件，拒绝目录外路径、父目录跳转、非 PNG 和大于 10 MiB 的内容。路径由原生端按 ID 查找，前端不传路径。
+
+## 事件
+
+
+| 事件名 | 发送方 | 目标 |
+|---|---|---|
+| `island-position-changed` | `island/mod.rs` | 广播（通过主窗口对象调用 `emit`） |
+| `island-position-cleared`（无载荷：岛屿跟随鼠标或前台窗口换了显示器，拖动保存的位置作废，主窗口清掉 `focusd-island-position`） | `island/follow.rs` | 主窗口 |
+| `island-top-attachment-changed`（载荷为 `bool`：岛屿是否贴住所在显示器顶边） | `island/top_edge.rs` | 广播（通过主窗口对象调用 `emit`） |
+| `island-hover-changed`（载荷为 `bool`：光标是否在岛屿形状内，供悬停展开使用） | `island/passthrough.rs` | 广播（通过主窗口对象调用 `emit`） |
+| `island-cursor-moved`（载荷 `{ x, y }`：光标在主窗口 CSS 像素中的位置，窗口外也有；只在 `set_island_cursor_tracking(true)` 后、光标移动时发，约 28 次/秒，供中心图案的眼睛跟随） | `island/passthrough.rs` | 广播（通过主窗口对象调用 `emit`） |
+| `foreground-fullscreen-changed`（载荷为 `{ active, onIslandMonitor }`：前台是否有全屏程序、是否占住岛所在的显示器，供游戏模式使用） | `system/fullscreen.rs` | 广播 |
+| `media-session-changed`（无载荷：某个媒体会话的时间线、播放状态或歌曲变了，或会话增减；主窗口收到后立即重读 `get_media_state`。2026-11-11 起） | `media_control/watcher.rs` | 广播 |
+| `clipboard-history-changed` | `clipboard_history/service.rs`（常量在 `mod.rs`） | 广播 |
+| `clipboard-history-shortcut` | `clipboard_history/service.rs`（常量在 `hotkey.rs`） | 广播 |
+| `clipboard-history-shortcut-status`（载荷为字符串或 `null`：剪贴板快捷键注册失败的原因，成功或关闭时为 `null`；最近一次结果也可用 `get_clipboard_shortcut_error` 读取） | `clipboard_history/hotkey.rs` | 广播 |
+| `qq-mail-changed` | `mail/service.rs`（常量在 `mod.rs`） | 广播 |
+| `qq-notifications-changed` | `qq_notifications/mod.rs` | `main`、`settings` |
+| `wechat-reminder-changed` | `wechat_reminders/mod.rs` | `main`、`settings` |
+| `translation-window-opened` | `translation/mod.rs` | 广播 |
+| `translation-island-shortcut`（翻译设为「岛内页面」时按下翻译快捷键：先唤出主窗口，再让它切换翻译页） | `translation/mod.rs` | 广播 |
+| `settings-open-requested`（无载荷：托盘、翻译窗口或独立设置窗口要打开设置，主窗口按 `focusd-island-detached-settings` 决定打开岛上的设置页还是独立窗口） | `settings_window/mod.rs`、前端 `windows/settings/api.ts` | `main` |
+| `focusd-update-state` / `focusd-update-request`（更新状态由主窗口广播；独立设置窗口用后者请求 `snapshot` / `check` / `install` / `dismiss`，以及 `{ action: "auto", enabled }` 切换自动更新（2026-11-13 起）；3.0.2 及更早还有 `channel`。状态里多了 `autoUpdate` 布尔字段） | `features/updater/updaterController.ts` | 广播 / `main` |
+| `agent-approval-requested`（载荷 `{ id, agent, kind, sessionId, cwd, toolName, toolInput, permissionSuggestions, receivedAt }`：一个会话等你在岛上审批的工具调用（`kind: "permission"`），或要你回答的 AskUserQuestion（`kind: "question"`，`toolInput.questions`），同一会话同时只发一条） | `agent_approval/mod.rs` | 广播 |
+| `agent-approval-closed`（载荷 `{ id, reason }`，`reason` 为 `decided` / `timeout` / `disconnected` / `handedBack` / `shutdown`） | `agent_approval/mod.rs` | 广播 |
+
+## 其他
+
+- `focusd-island-settings` 的 behavior 块增加 `keepVisibleWhileAgentRunning`、`keepVisibleWhileLyrics`、`keepVisibleWhileTodoRunning`（2026-11-13）：三项独立布尔值，默认 false；缺失或非 boolean 回退 false。仅暂停收起态闲置贴边计时，不新增 key、命令或事件。
+- `focusd-island-settings` 新增 `topEdgeShoulders`（boolean，默认 false）和 `topEdgeShoulderSize`（整数 4–20px，默认 10）；无效或缺失回退默认，大小超界夹取，只影响贴顶的装饰外形，不增加原生点击区域。属于外观字段，恢复默认外观会一并复位。
+
+- DSH（issue #51）：新增只读命令 `get_dsh_usage()`，返回 `null` 或 `{ updatedAt, available, wallets: [{ currency, total, granted, toppedUp }], source: "dshApi" | "dshAccount" }`，金额为十进制字符串。`list_agent_sessions` 的 `provider` 新增 `dsh`；`focus_agent_window`、`agent_sessions_in_front` 接受 `dsh`，既有参数和返回结构不变。无新增事件，无新增 localStorage key；`focusd-island-settings` 兼容新增 `agentShowDsh`（缺失时为 true）。`agent-status.json`、钩子安装状态仍只含 Claude/Codex。该命令是自有 Rust 命令，不增加 Tauri 插件/核心权限；现有 capabilities 足够。
+- WorkBuddy 使用 `open_workbuddy_login()`、`get_workbuddy_usage({ refreshNow?, cachedOnly? })` 和 `disconnect_workbuddy()`。读命令及 `workbuddy-usage-changed` 事件的状态为 `signedOut`、`loginRequired`、`ready`、`unavailable` 或 `connected`。只有 `connected` 带 `usage: { remaining, total, updatedAt }`，金额为数值，时间为 Unix 毫秒。事件发到 `main` 和 `settings`。远程 `workbuddy-sign-in` 窗口在本地 capability 之外。
+
+- 展开岛屿的按钮样式保存在 `focusd-island-settings.pageButtonStyle`，支持 `capsule` 和 `icon`，缺失或未知值使用 `capsule`。
+- 微信摘要通过 `set_wechat_message_preview_enabled(enabled)` 开关。`set_wechat_minimized_taskbar_hidden(hidden)` 设置最小化时隐藏微信任务栏图标。`set_wechat_reminders_enabled` 可接收 `previewEnabled` 和 `hideMinimizedTaskbar`，省略时保留对应偏好。事件快照包含 `previewEnabled`、`previewStatus`、`hideMinimizedTaskbar`、`messages`，消息行是 `{ id, receivedAt, contact, body }`。
+- `open_wechat_conversation(messageId)` 用内存中的摘要 ID 定位微信会话。返回 `true` 表示已点击对应会话，`false` 表示已打开微信主窗口。微信的会话标识和进程身份保存在原生内存中。
+- `clear_wechat_reminders()`（2026-11-13）清除岛内微信镜像：`pending=false`、清空 `messages`、`revision+1`，返回 `ReminderSnapshot` 并沿用 `wechat-reminder-changed` 推送；发给 settings 的快照仍剥除消息。不会操作微信客户端的已读状态或偏好。为本应用命令，不使用额外插件/核心权限；现有 `capabilities/default.json` 的本地窗口范围足够。
+- `dismiss_wechat_conversation(messageId)`（2026-11-14）清掉 `messageId` 所在会话（按会话 key）的全部摘要，保留其他会话；最新一次提醒属于该会话时同时 `pending=false`，`lastAttentionAt` 不变。返回 `ReminderSnapshot`，沿用 `wechat-reminder-changed` 推送；找不到 ID 时原样返回。前端在打开会话成功后调用。
+- `dismiss_qq_contact(title)`（2026-11-14）清掉通知标题等于 `title`（联系人或群名）的全部 QQ 通知，保留其他人，返回 `QQNotificationSnapshot` 并沿用 `qq-notifications-changed` 推送。两条命令都只改内存中的镜像，不新增 localStorage key 或事件，不需要额外权限。
+- `open_wechat` / `open_wechat_conversation` 失败时返回错误码 `wechat-open:not-installed`、`wechat-open:no-main-window`、`wechat-open:restore-failed`、`wechat-open:launch-failed`，由前端翻译成中英文提示；微信未运行时这两个命令会尝试启动它（会话命令随后返回 `false`）。
+- 应用数据目录的 `wechat-accessibility.json` 记录 `{ pid, started_at }`，用于重新校验进程并恢复岛屿临时开启的微信辅助功能标志。
+
+- 窗口 label：`main`、`translation`、`settings`、`clipboard`（3.1.0 新增）；前端分发参数为 `?window=translation`、`?window=settings`、`?window=clipboard`。
+- Tauri 命令：以 `lib.rs` 中 `generate_handler!` 列表为准，命令名即 Rust 函数名。
+- 应用标识 `com.focusd.island`，凭据服务名 `com.focusd.island.qq-mail`、`com.focusd.island.translation`、`com.focusd.island.workbuddy-web`（2026-11-14 新增，WorkBuddy 登录 cookie 副本，用户名 `cookies-<0..7>`）。
+- 注册表值：`HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 下的 `FocuSD Island`。
+- Hook 受管区块标记：`# BEGIN/END FocuSD Agent Status Hooks`，命令签名前缀 `focusd-agent-`。
+- 更新端点与 `latest.json` 格式：见 `tauri.conf.json` 和 `docs/updater.md`。
+- 在岛上审批（2026-11-06 起）：端点路径 `POST /claude/permission-request`、`POST /codex/permission-request`，以及 Claude Code `PreToolUse` 钩子的 `POST /claude/ask-user-question`（只接 AskUserQuestion，回答以 `updatedInput.answers` 返回），以及 Claude Code 动静钩子的 `POST /claude/activity`（2026-11-07 起；请求体是 `PostToolUse` / `PostToolUseFailure` / `PermissionDenied` / `Stop` / `SubagentStop` / `UserPromptSubmit` 的钩子输入，总是回 `{}`，用来撤掉已在终端答过的卡片，事件 `agent-approval-closed` 的 `reason` 为 `answeredElsewhere`）（`Authorization: Bearer <令牌>`，`Host` 须为本机端口，带 `Origin` 的请求拒绝），返回 Claude Code `PermissionRequest` 钩子的格式，空对象 `{}` 表示交还终端；`agent-approval.json` 字段 `port`、`token`；Tauri 命令 `set_agent_approval_enabled`、`agent_approval_decide`（`decision` 为 `allow` / `deny` / `allowAlways` / `terminal`；提问为 `answer` 加 `answers`（问题原文 → 回答）或 `terminal`）、`agent_approval_pending`；事件见上表。
+- 歌词缓存（2026-11-06 起）：应用数据目录下的 `lyrics-cache/<FNV-1a 哈希>.json`（`{ key, lrc, source?, translation?, wordTimes?, durationMs?, durations?, fetchedAt }`；`lrc` 可带增强 LRC 的逐字时间 `<mm:ss.xx>`（酷狗 KRC 转来）；`wordTimes` 为 true 的条目由保留逐字时间的版本写入，没有它的酷狗旧条目会重新下载；`durations` 为 true 的条目由记录歌曲时长的版本写入（`durationMs` 是来源给的时长，可为空），没有它的旧条目会重新查一次（2026-11-10）；`lrc` 为 null 表示所有在线来源都没有，7 天后重查；`source` 为 `lrclib` / `kugou` / `netease`，没有时是 LRCLIB 的旧条目；开着中文来源时 key 末尾多 `cn`；最多 2000 个文件）。设置项 `lyricsFolder`、`lyricsOnline`（2026-11-10 起默认开，保存过 false 的仍为关）、`lyricsChinese`（也查酷狗和网易云，同样默认开）、`lyricsOffsetMs`。每首歌自己的偏移存在 localStorage `focusd-island-lyrics-offsets`（`{ <歌名歌手时长/2 秒>: 毫秒 }`，±10 秒，最多 500 首）。媒体状态多了 `trackId`：播放器插件写进流派的歌曲 ID（`NCM-<id>`、`QQ-<id>`），`get_lyrics` 的查询多了 `chinese`、`trackId`，返回值多了 `translation`，2026-11-10 起还有可选的 `durationMs`（来源给的歌曲时长，播放器不报告时长时用于进度条）。
+- 岛屿设置 `focusd-island-settings` 2026-11-10 新增三个字段：`collapsedPriority`（`["agent","lyrics","todo"]` 的某种顺序，收起的岛先显示哪一样）、`collapsedShowCover`（布尔，默认 false）、`pageOrder`（`["todo","music","clipboard","shelf"]` 的某种顺序，展开岛顶栏的页面圆点）；同日又加 `collapsedLayout`（`["text","mail","shelf","music","agents"]` 的某种顺序，收起的岛上文字和状态图标从左到右的位置，`text` 之前的图标在文字左边）。读取时去掉未知和重复项，缺的按默认顺序补在末尾。
+- 岛屿设置 `focusd-island-settings` 的 `pageOrder` 2026-11-11 起多一个可选项 `"translation"`（翻译的页面胶囊），默认顺序 `["todo","music","clipboard","shelf","translation"]`；旧数据缺它时按上面的规则补在末尾，旧版本读到它会当未知项丢掉。
+- 岛屿设置 `focusd-island-settings` 2026-11-11 新增 `autoCollapseSeconds`（整数秒 0–600，0 表示从不；鼠标离开展开的岛多少秒后收起）和 `tuckDelaySeconds`（整数秒 3–600，默认 30；收起的岛闲置多少秒后贴边成细线）。`autoCollapseSeconds` 最初只存 3 / 5 / 10 / 30 / 0，这些值照旧有效；非数字或旧数据没有这个字段时：`autoTuck` 为 true 读成 30，否则读成 0；超出范围按边界读。旧版本存过的 `autoTuckSeconds` 不再读取，`tuckDelaySeconds` 缺失时读成 30。
+- 岛屿设置 `focusd-island-settings` 的 `expandedScale`（展开后的大小）2026-11-10 重新可以设置；2026-11-11 起是 0.85–1.2 之间的任意值（滑块，步长 0.01）。3.0.0 存的 0.9 / 1 / 1.1（小 / 中 / 大）原样保留；更早版本存的任意数（原范围 0.75–1.4）读取时限制到 0.85–1.2 并取到百分位，非数字按 1。字段名和类型不变。
+- `focusd-island-settings` 新增 `islandFontPercent`（90–120，默认 100，步长 5）、`collapsedAutoWidth`（默认 true）、`collapsedWidth`（240–480，默认 340）和 `collapsedHeight`（32–60，默认 38）。宽高以缩放前的逻辑像素存储。`set_island_interaction` 接收实际使用的 `collapsedWidth` 及可选的 `collapsedHeight`，缺少高度时使用当前状态的高度，初始值为 38。
+- `focusd-island-settings.agentQuotaSources` 保存可见额度环，候选值依次为 `claudeCode`、`codex`、`dsh`、`workbuddy`。旧数据缺少该字段时用原有会话来源开关迁移三种来源，并选中 WorkBuddy。保存空数组表示隐藏额度行。
+- WorkBuddy 会话（2026-11-13）：`list_agent_sessions` 的 `provider` 新增 `workbuddy`；`focus_agent_window`、`agent_sessions_in_front` 接受 `workbuddy`，既有参数和返回结构不变。`focusd-island-settings` 兼容新增 `agentShowWorkbuddy`（缺失时为 true），旧数据迁移额度环时 WorkBuddy 跟随此开关。无新增命令、事件或 localStorage key。
+- 岛屿设置 `focusd-island-settings` 的 `gameDoNotDisturb`（布尔，默认 true）2026-11-11 重新可以设置（通用 → 岛屿 → 游戏模式）：只有明确存为 false 才关；`gameAutoTuck` 仍按默认 false 读取。字段名和类型不变，没有新 key。
+- 岛屿设置 `focusd-island-settings` 新增 `positionLocked`（布尔，默认 false）：只在明确保存为 true 时禁止拖动。旧数据缺失或类型无效时保持可拖动。`set_island_interaction` 增加可选参数 `positionLocked`，缺失时按 false；`start_island_drag` 在锁定时不启动拖动。复位和贴边隐藏不受影响。
+- 2026-11-13：同一设置对象新增 `tuckStyle: "edge" | "line" | "hidden"`，前端缺失或非法值回退 `"line"`；旧存档通过上表的完成标记统一迁移一次为 line，随后尊重手动选择。`set_island_interaction` 新增可选 `tuckStyle`（Rust `tuck_style: Option<String>`，camelCase 映射），原生命令未传或未知值仍按 `edge` 兼容旧客户端。仅贴边时改变可见高度和命中区域，现有命令名、参数、事件与存储 key 保持兼容。`autoTuck` 缺失或非布尔时按默认 true，明确保存 false 仍关闭。
+- Agent 页显示方式（2026-11-07 起）：设置项 `agentSessionView`（`list` / `cards` / `compact`，默认 `list`）、`agentArchiveMotion`（`slide` / `dissolve`，默认 `slide`）、`agentCardEffects`（`off` / `sparkle` / `gradient`，默认 `off`）；`AgentSessionSummary.contextTokens`（最近一次模型调用的上下文 tokens，Claude Code 取 usage 的输入、缓存读写与输出之和，Codex 取 `token_count` 的 `last_token_usage.total_tokens`；不知道时为 null）。
+- 回复状态标记（2026-11-08 起换位置）：写在 Claude 配置目录（`CLAUDE_CONFIG_DIR`，默认 `~/.claude`）下的 `rules/focusd-island-reply-marker.md`，块标记 `<!-- focusd-island: reply marker v2 -->`；关掉时只删除含这个标记的文件。v1 写在 `CLAUDE.md` 里的块在打开或关掉时移除，`CLAUDE.md` 的其他内容不动；软链文件一律不写。
+- Agent 页排列（2026-11-08 起）：设置项 `agentSessionSort`（`status` / `recent` / `firstSeen`，默认 `status`；旧数据没有这个字段时按 `status`，会改变升级前的顺序）、`agentSessionGroup`（`computer` / `project` / `none`，默认 `computer`）；`agentHostDisplay` 的默认值改为 `icon`（已保存的值不变）。
+
+- 待办设置（2026-11-12）：现有 `focusd-island-settings` 对象增加 `todoTimerEnabled`（boolean，默认 false，仅接受 boolean）、`todoReorderVersion`（固定 1）；`enableTodoReorder` 默认 true。缺少版本标记的旧数据一律开启拖拽，有 `todoReorderVersion: 1` 时才尊重布尔值。没有新增 key 或修改待办数据格式；关闭计时器删除本轮 `focusd-island-todo-timer`，保留进行中 ID 和各项时长。
+- 待办各项时长（2026-11-12）：新增 `focusd-island-todo-durations`（`{ [todoId]: 分钟 }`），取代所有待办共用的 `focusd-island-todo-duration`。不迁移旧值：用户明确要求每项待办独立，新待办都从 15 分钟起；旧 key 留在原处不读取。直接点“开始”不再启动倒计时，只有怀表设置里的开始才计时。
+
+总览见 [overview.md](overview.md)。
+# 网易云精准进度插件
+
+- 命令：`netease_plugin_status()` 返回 `NeteasePluginStatus`（state、supported、tested、version、arch、installDir、running、legacyInfLink、pluginDir）；`install_netease_plugin()` / `uninstall_netease_plugin()` 返回 `{ keptForeignLoader, preservedFiles }`；`close_netease({ relaunch })` 结束网易云的全部进程，`relaunch` 为 true 时随后重新打开（只在用户点击“立即重启网易云”或“关闭网易云并继续”后调用）。
+- 错误统一为 `{ kind, detail }`，kind 为 Unsupported / NeedsClose / LegacyConflict / HashMismatch / Network / UserDeclined / Busy / Io / Blocked（被安全软件拦截或文件被占用）/ DriveUnavailable（网易云在提权进程看不到的网络盘、映射盘或 subst 盘上）/ LoaderExists（提权期间目录里出现了别的 msimg32.dll）。
+- 事件 `media-plugin-progress`：`{ stage: downloading|verifying|copying|done|error, detail?: string|null }`。
+- 应用数据 `media-plugins.json`：`{ version: 1, files: [{ path, sha256 }], installedAt }`，installedAt 为 Unix 秒。仅记录本应用写入的文件；卸载只删除仍与记录哈希一致的文件，替换文件保留并返回路径；记录损坏或未知版本容错为空。
+- 应用数据 `media-plugins-auto.json`：`{ version: 1, optedOut, attempted: ["<网易云安装目录>|<版本>"] }`，最多保留 8 条；损坏或未知版本按空记录处理（会再自动尝试一次）。命令 `prepare_netease_manual_install` 返回 `{ staged, targetDir }`。
+- 启动参数 `--media-plugin-copy <源> <目标> <sha256>`、`--media-plugin-remove <目标> <sha256>` 在 Tauri 和 single-instance 初始化前处理并退出。只接受固定清单的加载器哈希，目标必须为绝对路径 `msimg32.dll`，父目录须有 `cloudmusic.exe`，禁止 `..`、链接与特殊路径。复制前校验源文件，删除前校验目标文件；不启动正常应用窗口。可选的最后一个参数 `--report=<绝对路径>`：失败时 helper 把错误原文写进这个新文件（只接受 `focusd-plugin-helper-*.txt` 且不覆盖已有文件），父进程读出后删除；管理员是另一个用户时写不进去，只剩退出码。退出码：0 成功，1 未知（也是旧版唯一的失败码），2 参数无效，3 目标目录在提权进程里不可见，4 目标无效，5 哈希不符，6 加载器已存在，7 拒绝访问，8 文件被占用，9 被杀毒软件拦截，10 网易云正在运行。临时文件名为 `<目标文件名>.<pid>-<纳秒>.focusd-tmp`，复制前会清掉同目录里本应用留下的旧临时文件（含旧版固定名 `msimg32.focusd-tmp`）。
+- 播放器诊断新增 `neteasePluginInactive`：已安装插件但仍无时间线，提示重启及可能不兼容。
+
+
+- 剪贴板独立窗口（2026-11-13）：岛屿设置新增 `clipboardDetached`（布尔，默认 false；开启后点剪贴板入口或按剪贴板快捷键打开 `clipboard` 窗口而不是展开岛）。localStorage 新增 `focusd-island-clipboard-window-pinned`（`"false"` 为不置顶，缺失或其他值为置顶，即默认置顶）。新命令 `open_clipboard_window`、`show_clipboard_window`、`close_clipboard_window`（创建窗口的命令为 async，避免 Windows IPC 线程死锁）和 `show_clipboard_history_island`（剪贴板快捷键事件改由主窗口前端按设置分流，岛内打开时由它显示并聚焦主窗口）。窗口位置存应用数据目录 `clipboard-window.json`。权限新增 `core:window:allow-set-always-on-top`。
+- 剪贴板（2026-11-13）：`focusd-island-settings.clipboardVisibleRows` 现可设置为 3–8 的整数，缺失或非法值为 4；`set_clipboard_history_settings` 的 `maxItems` 范围扩为 5–500，默认 30，命令、数据字段和历史文件格式不变。
+- 配色（2026-11-14）：`focusd-island-settings` 新增 `colorScheme`（`"dark"` / `"light"` / `"system"`，缺失或未知值为 `"dark"`），属于外观字段，进外观预设，恢复默认外观会复位。三种自定义颜色字段格式不变；值等于任一配色的默认值时视为跟随配色（`features/appearance/theme.ts`）。新命令 `set_settings_window_theme(dark: boolean)`：只在设置窗口调用，设置它的 DWM 标题栏深浅和窗口底色，无返回值；自有 Rust 命令，不需要新权限。`tauri.conf.json` 去掉 settings、clipboard 窗口固定的 `"theme": "Dark"`。
+- 质感（2026-11-14）：`focusd-island-settings` 新增 `material`（`"classic"` / `"liquidGlass"` / `"frostedGlass"`），取代旧字段 `appearanceMode`（`"classic"` / `"liquidGlass"`）。读取时 `material` 合法就用它；否则旧的 `appearanceMode: "liquidGlass"` 迁移为 `"liquidGlass"`，其余为 `"classic"`；保存时不再写 `appearanceMode`（`normalizeLayoutSettings.ts`）。属于外观字段，进外观预设。`set_island_interaction` 的 `glassEnabled` 在两种玻璃下都为 `true`，原生侧照旧只回 `"css-fallback"`。
+
+## 插件 API v1
+
+- 新目录：`src-tauri/src/plugin_host/`、`src/features/plugins/`、`plugins/<id>/`（独立 crate）、`plugins/sdk/`、`docs/plugins/`。
+- 命令：`get_plugins()`、`get_plugins_index()`、`install_plugin(id)`、`set_plugin_enabled(id, enabled)`、`uninstall_plugin(id)`、`set_plugin_setting(id, key, value)`、`run_plugin_action(id, action)`、`configure_plugins(developerMode, indexUrl)`、`load_development_plugin(directory)`。
+- 事件：`plugins-changed`（无敏感数据；前端重新 get_plugins）。stdio RPC：`initialize`、`action`、`publish`，停止时可发送无 id 的可选 `shutdown` 通知；旧 v1 插件仍由宿主限时结束，完整 schema 见 `docs/plugins/api.md`。
+- manifest：`fly-island-plugin.json`；发布索引：`plugins-index.json`。现有命令、事件、窗口、localStorage key、latest.json 格式和更新端点保持兼容。

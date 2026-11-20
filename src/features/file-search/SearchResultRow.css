@@ -1,0 +1,106 @@
+.search-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: 48px;
+  padding: 0 var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--corner-md);
+  corner-shape: var(--corner-shape);
+}
+.search-result:hover,
+.search-result--selected {
+  background: var(--color-white-a06);
+  border-color: var(--color-white-a08);
+}
+.search-result--selected {
+  background: var(--color-white-a08);
+}
+.search-result__main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  padding: 6px 0;
+  color: var(--text-1);
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.search-result__icon {
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+.search-result__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.search-result__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-result__hit {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+.search-result__path {
+  font-size: 11px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-result__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.search-result__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+}
+.search-result:hover .search-result__actions,
+.search-result--selected .search-result__actions {
+  opacity: 1;
+}
+.search-result__action {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--corner-sm);
+  corner-shape: var(--corner-shape);
+  cursor: pointer;
+}
+.search-result__action:hover {
+  background: var(--color-white-a10);
+  color: var(--text-1);
+}
+.search-result__action:focus-visible,
+.search-result__main:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+.search-result__open-hint {
+  color: var(--text-3);
+  margin-left: 2px;
+}

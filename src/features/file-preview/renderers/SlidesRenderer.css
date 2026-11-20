@@ -1,0 +1,13 @@
+.slides-renderer {
+  min-height: 100%;
+  padding: var(--space-md);
+  background: #17191d;
+}
+.slides-renderer__status {
+  color: var(--text-3);
+  font-size: 13px;
+}
+.slides-renderer__host {
+  max-width: 980px;
+  margin: 0 auto;
+}
