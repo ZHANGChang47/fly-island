@@ -60,7 +60,7 @@ fn load(path: &str) -> Result<model::PreviewFile, String> {
     if !metadata.is_file() {
         return Err("只能预览文件。".to_string());
     }
-    let mut reader = file;
+    let reader = file;
     let mut buffer = Vec::with_capacity(metadata.len().min(model::PREVIEW_LIMIT) as usize);
     let truncated = metadata.len() > model::PREVIEW_LIMIT;
     reader
