@@ -26,7 +26,7 @@ export function ColorSettingsSection({
   const text = t.settings.colors;
   const backup = loadColorBackup();
   // A colour never changed shows what the scheme draws; picking one makes it the user's own.
-  const drawn = resolveSchemeColors(settings, useResolvedScheme(settings.colorScheme));
+  const drawn = resolveSchemeColors(settings, useResolvedScheme(settings.colorScheme), settings.material);
   // Unset, the page text is the scheme's ink (--ink-rgb in tokens.css).
   const schemeInk = drawn.tone === "light" ? "#1A1A20" : "#F8F6F0";
   const colors: readonly [ColorKey, string][] = [

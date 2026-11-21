@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_SETTINGS,
+  glassTintAlpha,
   hexToRgba,
+  isGlass,
   isSameSettings,
   normalizeSettings,
   withAppearanceFrom,
@@ -12,6 +14,7 @@ import {
   STORAGE_KEY,
   loadSettings,
 } from "../../src/features/appearance/storage.ts";
+import { resolveSchemeColors, SCHEME_COLORS } from "../../src/features/appearance/theme.ts";
 
 test("tucked style defaults to line and rejects unknown saved values", () => {
   assert.equal(DEFAULT_SETTINGS.tuckStyle, "line");
@@ -220,6 +223,30 @@ test("the material defaults to classic; the old liquid glass mode carries over",
   assert.equal(normalizeSettings({ material: "classic", appearanceMode: "liquidGlass" }).material, "classic");
   assert.equal(normalizeSettings({ material: "chrome", appearanceMode: "neon" }).material, "classic");
   assert.equal("appearanceMode" in normalizeSettings({ appearanceMode: "liquidGlass" }), false);
+
+  // Light clear glass is a real material; the aurora switch is opt-in and never on for an old archive.
+  assert.equal(normalizeSettings({ material: "lightGlass" }).material, "lightGlass");
+  assert.equal(isGlass("lightGlass"), true);
+  assert.equal(isGlass("classic"), false);
+  assert.equal(DEFAULT_SETTINGS.auroraAura, false);
+  assert.equal(normalizeSettings({ auroraAura: true }).auroraAura, true);
+  for (const auroraAura of [undefined, 1, "true", {}]) {
+    assert.equal(normalizeSettings({ auroraAura }).auroraAura, false);
+  }
+});
+
+test("light glass draws the light palette and stays more solid than dark liquid glass", () => {
+  const light = resolveSchemeColors(DEFAULT_SETTINGS, "dark", "lightGlass");
+  assert.equal(light.islandBackgroundColor, SCHEME_COLORS.light.islandBackgroundColor);
+  assert.equal(light.taskTextColor, SCHEME_COLORS.light.taskTextColor);
+  assert.equal(light.tone, "light");
+  // A colour the user picked stays theirs: the material only chooses the scheme's defaults.
+  const custom = resolveSchemeColors({ ...DEFAULT_SETTINGS, islandBackgroundColor: "#101014" }, "dark", "lightGlass");
+  assert.equal(custom.islandBackgroundColor, "#101014");
+  assert.equal(custom.tone, "dark");
+
+  assert.ok(glassTintAlpha("lightGlass", 72) > glassTintAlpha("liquidGlass", 72));
+  assert.ok(glassTintAlpha("liquidGlass", 100) < glassTintAlpha("liquidGlass", 25));
 });
 
 test("clipboard rows are saved, clamped and independent of appearance presets", () => {

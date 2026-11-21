@@ -15,6 +15,7 @@ import type { IslandSettings } from "./types";
 export const DEFAULT_SETTINGS: IslandSettings = {
   topEdgeLayoutVersion: 1,
   material: "classic",
+  auroraAura: false,
   colorScheme: "dark",
   fontFamily: "system",
   islandFontPercent: ISLAND_FONT_PERCENT.default,

@@ -1,11 +1,12 @@
 export type TranslationTarget = "window" | "island";
 
 /**
- * The island's material: classic (a flat fill), liquid glass (a nearly clear pane with lit edges)
- * or frosted glass (a milky pane). Both glasses are drawn in CSS over a clear window: nothing
- * blurs the desktop behind them (island/glass.rs).
+ * The island's material: classic (a flat fill), liquid glass (a nearly clear dark pane with lit
+ * edges), light glass (a near-white clear pane with dark text) or frosted glass (a milky pane).
+ * The glasses are drawn in CSS over a clear window: nothing blurs the desktop behind them
+ * (island/glass.rs). Light glass takes the light scheme's colours whatever the chosen scheme.
  */
-export type Material = "classic" | "liquidGlass" | "frostedGlass";
+export type Material = "classic" | "liquidGlass" | "lightGlass" | "frostedGlass";
 /** Colour scheme of the island and the windows: dark, light, or whichever Windows uses. */
 export type ColorScheme = "dark" | "light" | "system";
 export type IslandFont = "system" | "pixel";
@@ -56,6 +57,8 @@ export type PageDot = "todo" | "music" | "clipboard" | "shelf" | "search" | "tra
 export type IslandSettings = {
   topEdgeLayoutVersion: 1;
   material: Material;
+  /** Aurora ambience: purple and mint light caught inside a glass island. Off by default. */
+  auroraAura: boolean;
   colorScheme: ColorScheme;
   fontFamily: IslandFont;
   islandFontPercent: number;

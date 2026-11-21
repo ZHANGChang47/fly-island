@@ -1,12 +1,14 @@
 /*
  * The glass materials (Appearance → Style → Material). Their variables come from glassStyle.ts.
- * Both are drawn in CSS only and nothing here blurs: backdrop-filter has nothing to blur over the
- * transparent island window, and a blur filter on layers that resize on every frame of the island's
+ * All three are drawn in CSS only and nothing here blurs: backdrop-filter has nothing to blur over
+ * the transparent island window, and a blur filter on layers that resize on every frame of the island's
  * spring would cost the motion. Each glass works in both tones ([data-tone], from the island colour):
- * the lit edges stay white, the shadows and the text halo follow the tone.
+ * the lit edges stay white, the shadows and the text halo follow the tone. Light glass takes the
+ * light palette whatever the chosen scheme, so its ink is dark; the aurora layer is an opt-in
+ * background wash lit under the glass (IslandShell's .island__aurora), never a second blur pass.
  */
 
-.island:is(.island--material-liquidGlass, .island--material-frostedGlass) {
+.island:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass) {
   /* One small noise tile, rasterized once and repeated: the pane reads as glass, not a flat colour. */
   --glass-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23n)'/%3E%3C/svg%3E");
   /* The glass draws its own rim. */
@@ -18,14 +20,14 @@
   box-shadow: 0 18px 46px rgba(0, 0, 0, calc(var(--glass-shadow-alpha) - var(--is-light) * 0.08));
 }
 
-:is(.island--material-liquidGlass, .island--material-frostedGlass).island--collapsed {
+:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass).island--collapsed {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, var(--glass-sheen-alpha)), transparent 70%),
     var(--glass-collapsed-tint-color);
   box-shadow: 0 8px 24px rgba(0, 0, 0, calc(0.16 - var(--is-light) * 0.06));
 }
 
-:is(.island--material-liquidGlass, .island--material-frostedGlass).island--collapsed:has(:focus-visible) {
+:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass).island--collapsed:has(:focus-visible) {
   box-shadow:
     inset 0 -1px 0 rgba(255, 255, 255, 0.5),
     inset 0 0 18px var(--color-white-a10),
@@ -44,7 +46,12 @@
   text-shadow: 0 0 3px rgba(255, 255, 255, 0.8);
 }
 
-:is(.island--material-liquidGlass, .island--material-frostedGlass) .island__glass {
+/* A light pane carries dark ink: a pale halo lifts it off a bright desktop without a blur. */
+.island--material-lightGlass {
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.5);
+}
+
+:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass) .island__glass {
   position: absolute;
   inset: 0;
   z-index: 1;
@@ -72,7 +79,7 @@
 }
 
 /* Light where the pointer is, as if the pane caught it: a gradient, not a blurred circle. */
-.island--material-liquidGlass .island__glass::before {
+.island:is(.island--material-liquidGlass, .island--material-lightGlass) .island__glass::before {
   inset: 0;
   background: radial-gradient(
     circle at var(--glass-pointer-x) var(--glass-pointer-y),
@@ -98,6 +105,17 @@
     inset 0 0 16px 2px rgba(255, 255, 255, var(--glass-inner-glow-alpha));
 }
 
+/* Light glass replaces the dark inner hairline with a cyan one: a white rim alone vanishes on a
+   pale wallpaper, the cool line is what gives the pane its thickness. */
+.island--material-lightGlass .island__glass-refraction {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, calc(var(--glass-border-alpha) + 0.14)),
+    inset 0 1.5px 0.5px rgba(255, 255, 255, var(--glass-inset-alpha)),
+    inset 0 -1px 0.5px rgba(255, 255, 255, 0.6),
+    inset 0 0 0 2px rgba(0, 113, 184, var(--glass-inner-line-alpha)),
+    inset 0 0 16px 2px rgba(255, 255, 255, var(--glass-inner-glow-alpha));
+}
+
 /* A short specular streak along the top edge, following the pointer. */
 .island__glass-highlight {
   top: 1px;
@@ -111,7 +129,7 @@
 }
 
 /* Opening lights the rim up from dim: opacity only, which the compositor plays. */
-.island--material-liquidGlass.island--expanded .island__glass-refraction {
+.island--clear-glass.island--expanded .island__glass-refraction {
   animation: glassRimBloom 440ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
@@ -122,8 +140,8 @@
 }
 
 /* Attached to the screen edge: the shoulders take the flat tint, liquid glass's streak moves to the bottom edge. */
-:root[data-island-top-edge="attached"] .island--shoulders:is(.island--material-liquidGlass, .island--material-frostedGlass):not(.island--tucked),
-:root:not([data-island-top-edge]) .island--docked.island--shoulders:is(.island--material-liquidGlass, .island--material-frostedGlass):not(.island--tucked) {
+:root[data-island-top-edge="attached"] .island--shoulders:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass):not(.island--tucked),
+:root:not([data-island-top-edge]) .island--docked.island--shoulders:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass):not(.island--tucked) {
   background: var(--glass-tint-color);
 }
 
@@ -169,7 +187,7 @@
  * the pane. Here they are a faint layer of the tone's overlay with a hairline and a lit top edge,
  * the way the message and clipboard cards already sit on it, so the glass shows through.
  */
-.island:is(.island--material-liquidGlass, .island--material-frostedGlass) {
+.island:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass) {
   /* A light veil of the tone's own base keeps muted text readable over a busy or bright desktop. */
   --inner-panel-fill:
     linear-gradient(160deg, rgba(var(--overlay-rgb), 0.07), rgba(var(--overlay-rgb), 0.02)),
@@ -187,6 +205,41 @@
   --inner-panel-fill:
     linear-gradient(160deg, rgba(var(--overlay-rgb), 0.06), rgba(var(--overlay-rgb), 0.02)),
     rgba(var(--panel-deep-rgb), calc(0.1 + var(--is-light) * 0.1));
+}
+
+/*
+ * Aurora ambience (Appearance → Aurora ambience): an opt-in wash of purple and mint caught under
+ * the pane. Two static radial gradients, one composited layer, no blur and no animation: it must
+ * not add work to the island's spring. It sits at z-index 0, under the glass (z-index 1) and the
+ * page (z-index 2), so it tints the material instead of washing over the text.
+ */
+.island {
+  --aurora-opacity: 0;
+  --aurora-purple-alpha: 0.4;
+  --aurora-mint-alpha: 0.28;
+}
+
+.island--aurora {
+  --aurora-opacity: 1;
+}
+
+/* On a light pane the same light would drown the dark ink, so it is roughly halved. */
+.stage[data-tone="light"] .island--aurora {
+  --aurora-purple-alpha: 0.2;
+  --aurora-mint-alpha: 0.15;
+}
+
+.island__aurora {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  corner-shape: var(--island-corner-shape, round);
+  pointer-events: none;
+  opacity: var(--aurora-opacity);
+  background:
+    radial-gradient(90% 150% at 10% 0%, rgba(147, 92, 255, var(--aurora-purple-alpha)), transparent 62%),
+    radial-gradient(100% 160% at 92% 100%, rgba(52, 214, 168, var(--aurora-mint-alpha)), transparent 60%);
 }
 
 @media (prefers-reduced-motion: reduce) {

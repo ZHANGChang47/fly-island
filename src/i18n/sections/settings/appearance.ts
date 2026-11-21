@@ -5,12 +5,16 @@ export type SettingsAppearanceText = {
   collapsedDimensions: { autoWidth: string; width: string; height: string; unit: string; hint: string };
   systemFont: string;
   pixelFont: string;
-  /** Material: classic, liquid glass, or frosted glass. */
+  /** Material: classic, dark liquid glass, light glass, or frosted glass. */
   material: string;
   classic: string;
   liquidGlass: string;
+  lightGlass: string;
   frostedGlass: string;
   glassStrength: string;
+  /** Optional purple and mint atmosphere, drawn under the glass; off by default. */
+  auroraAura: string;
+  auroraHint: string;
   /** Colour scheme: dark, light, or following Windows. */
   colorScheme: string;
   schemeDark: string;
@@ -69,9 +73,12 @@ export const zhCN: SettingsAppearanceText = {
   pixelFont: "像素字体",
   material: "质感",
   classic: "经典",
-  liquidGlass: "液态玻璃",
+  liquidGlass: "液态玻璃（深色）",
+  lightGlass: "浅色清透玻璃",
   frostedGlass: "磨砂玻璃",
   glassStrength: "玻璃强度",
+  auroraAura: "极光氛围",
+  auroraHint: "在玻璃下透出紫色与薄荷色的光晕。默认关闭；亮度会随岛屿色调自动收敛。",
   colorScheme: "配色",
   schemeDark: "深色",
   schemeLight: "浅色",
@@ -125,9 +132,12 @@ export const en: SettingsAppearanceText = {
   pixelFont: "Pixel",
   material: "Material",
   classic: "Classic",
-  liquidGlass: "Liquid",
+  liquidGlass: "Liquid (dark)",
+  lightGlass: "Light clear",
   frostedGlass: "Frosted",
   glassStrength: "Glass strength",
+  auroraAura: "Aurora ambience",
+  auroraHint: "Purple and mint light caught under the glass. Off by default; it dims itself on a light island.",
   colorScheme: "Color scheme",
   schemeDark: "Dark",
   schemeLight: "Light",

@@ -17,10 +17,12 @@ export function isGlass(material: Material) {
 
 /**
  * How opaque a glass's tint is at full island opacity: liquid glass is nearly clear (clearer as the
- * strength rises), frosted glass mostly hides what is behind it. Drawn by the island and its preview.
+ * strength rises), light glass a little more solid so dark text stays readable on a light pane, and
+ * frosted glass mostly hides what is behind it. Drawn by the island and its preview.
  */
 export function glassTintAlpha(material: Material, glassIntensity: number) {
   const strength = glassIntensity / 100;
+  if (material === "lightGlass") return 0.78 - strength * 0.22;
   return material === "liquidGlass" ? 0.58 - strength * 0.3 : 0.9 - strength * 0.16;
 }
 export { DEFAULT_SETTINGS } from "./settingsDefaults.ts";
@@ -33,6 +35,7 @@ export { DEFAULT_SETTINGS } from "./settingsDefaults.ts";
  */
 export const APPEARANCE_SETTING_KEYS = [
   "material",
+  "auroraAura",
   "colorScheme",
   "fontFamily",
   "islandFontPercent",

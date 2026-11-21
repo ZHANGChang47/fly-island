@@ -1,7 +1,7 @@
 // The colour scheme (Appearance → Style): which scheme is drawn, and the island's three colours in it.
 import { inkOn } from "../../utils/color.ts";
 import type { ColorPalette } from "./colorPalette.ts";
-import type { ColorScheme } from "./types";
+import type { ColorScheme, Material } from "./types";
 
 /** A scheme actually drawn: "system" resolves to one of these. */
 export type ResolvedScheme = "dark" | "light";
@@ -35,11 +35,14 @@ export function toneOn(background: string): ResolvedScheme {
 /**
  * The colours drawn in `scheme`. The background follows the scheme unless the user picked one;
  * the text and the status light follow the background's tone, so a white island picked in the dark
- * scheme still gets dark, readable text.
+ * scheme still gets dark, readable text. Light glass draws the light palette in every scheme:
+ * a near-white pane with dark ink is what makes that material readable, and its colour controls
+ * show and edit those same light colours.
  */
-export function resolveSchemeColors(settings: ColorPalette, scheme: ResolvedScheme): ColorPalette & { tone: ResolvedScheme } {
+export function resolveSchemeColors(settings: ColorPalette, scheme: ResolvedScheme, material?: Material): ColorPalette & { tone: ResolvedScheme } {
+  const drawnScheme = material === "lightGlass" ? "light" : scheme;
   const islandBackgroundColor = followsScheme("islandBackgroundColor", settings.islandBackgroundColor)
-    ? SCHEME_COLORS[scheme].islandBackgroundColor
+    ? SCHEME_COLORS[drawnScheme].islandBackgroundColor
     : settings.islandBackgroundColor;
   const tone = toneOn(islandBackgroundColor);
   const pick = (key: "taskTextColor" | "pulseColor") =>

@@ -14,7 +14,7 @@ function normalizeSize(value: unknown, limits: { min: number; max: number; defau
 /** The saved material; older versions saved liquid glass as `appearanceMode: "liquidGlass"`. */
 function normalizeMaterial(settings: LegacyIslandSettings | null | undefined): Material {
   const material = settings?.material;
-  if (material === "classic" || material === "liquidGlass" || material === "frostedGlass") return material;
+  if (material === "classic" || material === "liquidGlass" || material === "lightGlass" || material === "frostedGlass") return material;
   return settings?.appearanceMode === "liquidGlass" ? "liquidGlass" : DEFAULT_SETTINGS.material;
 }
 
@@ -35,6 +35,8 @@ export function normalizeLayoutSettings(settings: LegacyIslandSettings | null | 
     islandFontPercent: normalizeSize(settings?.islandFontPercent, ISLAND_FONT_PERCENT),
     pageButtonStyle: settings?.pageButtonStyle === "capsule" ? "capsule" : DEFAULT_SETTINGS.pageButtonStyle,
     material: normalizeMaterial(settings),
+    // Opt-in ambience: an archive from before this switch keeps it off.
+    auroraAura: settings?.auroraAura === true,
     colorScheme: settings?.colorScheme === "light" || settings?.colorScheme === "system" ? settings.colorScheme : DEFAULT_SETTINGS.colorScheme,
     glassIntensity: clamp(
       Number(settings?.glassIntensity ?? DEFAULT_SETTINGS.glassIntensity),

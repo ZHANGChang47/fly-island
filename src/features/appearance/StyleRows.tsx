@@ -1,6 +1,8 @@
 import { SettingsChoice } from "../../components/settings/SettingsChoice";
 import { SettingsRow } from "../../components/settings/SettingsRow";
+import { SettingsSelect } from "../../components/settings/SettingsSelect";
 import { SettingsSliderRow } from "../../components/settings/SettingsSliderRow";
+import { SettingsToggleRow } from "../../components/settings/SettingsToggleRow";
 import { useTranslation } from "../../i18n";
 import { DEFAULT_SETTINGS, ISLAND_FONT_PERCENT, isGlass, MAX_COLLAPSED_SCALE, MAX_EXPANDED_SCALE, MIN_COLLAPSED_SCALE, MIN_EXPANDED_SCALE } from "./settings";
 import type { ColorScheme, IslandFont, IslandSettings, Material, PageButtonStyle } from "./types";
@@ -36,13 +38,15 @@ export function SchemeRow({ settings, onSettingsChange }: RowsProps) {
   );
 }
 
-/** The material, and the glass strength under it while a glass is chosen. */
+/** The material, and the glass strength under it while a glass is chosen. Four options need a
+ * dropdown: the segmented control is for two or three. */
 export function MaterialRows({ settings, onSettingsChange }: RowsProps) {
   const t = useTranslation();
   const text = t.settings.appearance;
   const materials = [
     { value: "classic", label: text.classic },
     { value: "liquidGlass", label: text.liquidGlass },
+    { value: "lightGlass", label: text.lightGlass },
     { value: "frostedGlass", label: text.frostedGlass },
   ] as const;
   return (
@@ -50,7 +54,7 @@ export function MaterialRows({ settings, onSettingsChange }: RowsProps) {
       <SettingsRow
         title={text.material}
         control={
-          <SettingsChoice<Material>
+          <SettingsSelect<Material>
             value={settings.material}
             options={materials}
             ariaLabel={text.material}
@@ -73,6 +77,19 @@ export function MaterialRows({ settings, onSettingsChange }: RowsProps) {
         />
       )}
     </>
+  );
+}
+
+/** The opt-in purple and mint atmosphere, a background wash under any material, off by default. */
+export function AuroraRow({ settings, onSettingsChange }: RowsProps) {
+  const text = useTranslation().settings.appearance;
+  return (
+    <SettingsToggleRow
+      title={text.auroraAura}
+      description={text.auroraHint}
+      checked={settings.auroraAura}
+      onChange={(auroraAura) => onSettingsChange({ ...settings, auroraAura })}
+    />
   );
 }
 

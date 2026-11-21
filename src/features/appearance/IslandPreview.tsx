@@ -20,7 +20,7 @@ import "./IslandPreview.css";
 export function IslandPreview({ settings }: { settings: IslandSettings }) {
   const text = useTranslation().settings.appearance.preview;
   const glass = isGlass(settings.material);
-  const colors = resolveSchemeColors(settings, useResolvedScheme(settings.colorScheme));
+  const colors = resolveSchemeColors(settings, useResolvedScheme(settings.colorScheme), settings.material);
   const style = {
     "--preview-fill": hexToRgba(
       colors.islandBackgroundColor,
@@ -46,6 +46,7 @@ export function IslandPreview({ settings }: { settings: IslandSettings }) {
     "island-preview__island",
     glass && "island-preview__island--glass",
     `island-preview__island--${settings.material}`,
+    settings.auroraAura && "island-preview__island--aurora",
     settings.marginY > 0 && "island-preview__island--detached",
   ].filter(Boolean).join(" ");
 

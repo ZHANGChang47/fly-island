@@ -38,6 +38,8 @@ type IslandShellProps = {
   /** The open page's height (unscaled); a change resizes the shape around the panel. */
   expandedHeight: number;
   material: Material;
+  /** Opt-in purple and mint ambience, drawn under the glass and above the pane's tint. */
+  auroraAura: boolean;
   nativeGlassState: NativeGlassState;
   isTucked: boolean;
   /** How the island looks while tucked: its own rim (edge), a short line, or nothing. */
@@ -102,6 +104,7 @@ export function IslandShell({
   page,
   expandedHeight,
   material,
+  auroraAura,
   nativeGlassState,
   isTucked,
   tuckStyle,
@@ -146,8 +149,9 @@ export function IslandShell({
   const t = useTranslation();
   const isExpanded = mode === "expanded";
   const glass = isGlass(material);
-  const isLiquidGlass = material === "liquidGlass";
-  const { handleGlassPointerMove, resetGlassPointer } = useGlassPointer(isLiquidGlass);
+  // Both clear glasses catch the pointer light; frosted glass deliberately does not shine.
+  const clearGlass = material === "liquidGlass" || material === "lightGlass";
+  const { handleGlassPointerMove, resetGlassPointer } = useGlassPointer(clearGlass);
   const isPreparing = useIslandPreparing(isExpanded);
   const tuckMorphClass = useTuckMorph(isTucked, tuckStyle);
   const contentRef = usePageFadeIn<HTMLDivElement>(page, mode);
@@ -169,6 +173,8 @@ export function IslandShell({
     `island--${mode}`,
     `island--${page}`,
     `island--material-${material}`,
+    clearGlass ? "island--clear-glass" : "",
+    auroraAura ? "island--aurora" : "",
     isPreparing && !isExpanded ? "island--preparing" : "",
     isDetached ? "island--detached" : "island--docked",
     isTucked ? "island--tucked" : "",
@@ -210,10 +216,11 @@ export function IslandShell({
     >
       <span className="island__shoulders" aria-hidden="true" />
       <div className="island__surface">
+        {auroraAura && <span className="island__aurora" aria-hidden="true" />}
         {glass && (
           <div className="island__glass" aria-hidden="true">
-            {isLiquidGlass && <span className="island__glass-refraction" />}
-            {isLiquidGlass && <span className="island__glass-highlight" />}
+            {clearGlass && <span className="island__glass-refraction" />}
+            {clearGlass && <span className="island__glass-highlight" />}
           </div>
         )}
         <IslandCollapsedBar

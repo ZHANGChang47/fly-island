@@ -146,7 +146,7 @@ export function IslandApp() {
     shelfItems: fileShelf.items.length,
   }));
   const scheme = useDocumentTheme(settings);
-  const colors = useMemo(() => resolveSchemeColors(settings, scheme), [settings, scheme]);
+  const colors = useMemo(() => resolveSchemeColors(settings, scheme, settings.material), [settings, scheme]);
   const stageStyle = useMemo(
     () => getIslandStageStyle(settings, colors, collapsedIslandWidth, expandedIslandHeight),
     [collapsedIslandWidth, colors, expandedIslandHeight, settings],
@@ -205,6 +205,7 @@ export function IslandApp() {
         page={page}
         expandedHeight={expandedIslandHeight}
         material={settings.material}
+        auroraAura={settings.auroraAura}
         nativeGlassState={nativeGlassState}
         isTucked={isTucked}
         tuckStyle={settings.tuckStyle}

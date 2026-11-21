@@ -26,6 +26,8 @@
 }
 
 .island-preview__island {
+  position: relative;
+  isolation: isolate;
   display: flex;
   align-items: center;
   background: var(--preview-fill);
@@ -53,6 +55,38 @@
 
 [data-tone="light"] .island-preview__island--liquidGlass {
   text-shadow: 0 0 3px rgba(255, 255, 255, 0.8);
+}
+
+/* Light clear glass: a near-white pane with a cyan hairline instead of the dark one. It draws the
+   light palette in every scheme, so its ink stays dark (theme.ts resolveSchemeColors). */
+.island-preview__island--lightGlass {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, calc(0.14 + var(--preview-glass) * 0.12)), transparent 46%),
+    var(--preview-fill);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.78),
+    inset 0 1.5px 0.5px rgba(255, 255, 255, 0.9),
+    inset 0 0 0 2px rgba(0, 113, 184, calc(0.12 + var(--preview-glass) * 0.1)),
+    inset 0 0 16px 2px rgba(255, 255, 255, 0.24),
+    0 14px 34px rgba(0, 0, 0, 0.24);
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.5);
+}
+
+/* Aurora: the same two static washes as the island, under the pane and the sample content. */
+.island-preview__island--aurora::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  corner-shape: var(--preview-corner-shape, round);
+  background:
+    radial-gradient(90% 150% at 10% 0%, rgba(147, 92, 255, 0.4), transparent 62%),
+    radial-gradient(100% 160% at 92% 100%, rgba(52, 214, 168, 0.28), transparent 60%);
+}
+
+[data-tone="light"] .island-preview__island--aurora::before {
+  opacity: 0.5;
 }
 
 /* Frosted glass: a wash of white over the tint and a 1px bright rim (IslandGlass.css). */

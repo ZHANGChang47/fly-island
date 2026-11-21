@@ -7,7 +7,7 @@ import { CollapsedLayoutEditor } from "../../features/appearance/CollapsedLayout
 import { ColorSettingsSection } from "../../features/appearance/ColorSettingsSection";
 import { AppearancePresetSection } from "../../features/appearance/AppearancePresetSection";
 import { IslandPreview } from "../../features/appearance/IslandPreview";
-import { FontRows, MaterialRows, OpacityRow, PageButtonsRow, ScaleRows, SchemeRow } from "../../features/appearance/StyleRows";
+import { AuroraRow, FontRows, MaterialRows, OpacityRow, PageButtonsRow, ScaleRows, SchemeRow } from "../../features/appearance/StyleRows";
 import { TopEdgeShoulderRows } from "../../features/appearance/TopEdgeShoulderRows";
 import type { IslandSettings } from "../../features/appearance/types";
 import { requestPanelPreview } from "./storage";
@@ -44,6 +44,7 @@ export function AppearanceSettingsPage({
       <SettingsGroup title={text.themeTitle}>
         <SchemeRow {...rows} />
         <MaterialRows {...rows} />
+        <AuroraRow {...rows} />
         <OpacityRow {...rows} />
       </SettingsGroup>
       <ColorSettingsSection {...rows} />
