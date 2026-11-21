@@ -1,0 +1,270 @@
+export type TranslationTarget = "window" | "island";
+
+/**
+ * The island's material: classic (a flat fill), liquid glass (a nearly clear pane with lit edges)
+ * or frosted glass (a milky pane). Both glasses are drawn in CSS over a clear window: nothing
+ * blurs the desktop behind them (island/glass.rs).
+ */
+export type Material = "classic" | "liquidGlass" | "frostedGlass";
+/** Colour scheme of the island and the windows: dark, light, or whichever Windows uses. */
+export type ColorScheme = "dark" | "light" | "system";
+export type IslandFont = "system" | "pixel" | "local";
+export type PageButtonStyle = "capsule" | "icon" | "iconLabel";
+/** Shape of the island's corners: CSS `corner-shape: squircle`, or a circular arc. */
+export type IslandCornerShape = "squircle" | "round";
+/** Notch: flush with the top edge (the original look). Capsule: a floating pill below it (islandShape.ts). */
+export type IslandShape = "notch" | "capsule";
+/** Which monitor the island sits on: the primary one, or it follows the pointer or the foreground window there. */
+export type IslandMonitor = "primary" | "cursor" | "foreground";
+/** How the collapsed island opens: a click, or resting the pointer on it. */
+export type ExpandTrigger = "click" | "hover";
+/** What the expanded island's minimize button does: hide to the tray, or tuck to the top edge. */
+export type MinimizeAction = "tray" | "tuck";
+/** Retired: no longer in Settings, always loads as "reveal"; tucked hover now follows ExpandTrigger (tuckedHover.ts). */
+export type TuckedHoverAction = "reveal" | "expand";
+export type TuckStyle = "edge" | "line" | "hidden";
+/** How the Agent page shows the program a session runs in. */
+export type AgentHostDisplay = "both" | "icon" | "name" | "off";
+/** How the Agent page shows sessions: flat rows, two-line cards framed in their light, or one-line rows. */
+export type AgentSessionView = "list" | "cards" | "compact";
+/**
+ * Agent page order: what needs the user first (red, orange, green, grey), the newest write first,
+ * or the session the island saw first last (an order that stays put while sessions write).
+ */
+export type AgentSessionSort = "status" | "recent" | "firstSeen";
+/** Agent page headings: one per computer, one per project (its computer named on the heading), or none. */
+export type AgentSessionGroup = "computer" | "project" | "none";
+/** How an archived session leaves the Agent page: sliding out, or dissolving into dust in its light's colour. */
+export type AgentArchiveMotion = "slide" | "dissolve";
+/** Light effects on the Agent page's cards and compact rows: none, the sparkle band, or a gradient wash. */
+export type AgentCardEffects = "off" | "sparkle" | "gradient";
+/** Kimi Code and Z Code come from the plugin market and are offered only once installed. */
+export type AgentQuotaSource = "claudeCode" | "codex" | "dsh" | "workbuddy" | "kimiCode" | "zcode";
+/** Which session starts open the Agent page: every turn, a new session's first turn only, or none. */
+export type AgentAlertStarted = "everyTurn" | "newSession" | "off";
+/** What double-clicking a file shelf entry does. */
+export type ShelfDoubleClick = "open" | "reveal";
+/** What the collapsed island can show in its text: a running agent, the lyric line, a todo. */
+export type CollapsedItem = "agent" | "lyrics" | "todo";
+/**
+ * What sits on the collapsed island, in the order the user arranged it (Appearance → Collapsed
+ * island): the text (pulse, cover and the agent, lyric or todo line) and the status icons —
+ * the new-mail badge, files on the shelf, the music waveform, running Agent sessions (or the tuck
+ * dot). Icons before the text sit on its left.
+ */
+export type CollapsedSlot = "pulse" | "text" | "mail" | "shelf" | "music" | "agents" | "clock" | "weather";
+/** The page dots in the expanded island's header, which the user can drag into any order. */
+export type PageDot = "todo" | "music" | "clipboard" | "shelf" | "translation";
+
+export type IslandSettings = {
+  topEdgeLayoutVersion: 1;
+  material: Material;
+  colorScheme: ColorScheme;
+  fontFamily: IslandFont;
+  /** The installed font family in "local" mode. Empty uses the default stack. */
+  localFontFamily: string;
+  islandFontPercent: number;
+  pageButtonStyle: PageButtonStyle;
+  glassIntensity: number;
+  /** 0–100: how much the glass blurs what is behind it (island/glass_capture.rs). */
+  glassBlur: number;
+  opacity: number;
+  collapsedScale: number;
+  collapsedAutoWidth: boolean;
+  collapsedWidth: number;
+  collapsedHeight: number;
+  /** Space (px) between the collapsed island's sides and its first and last items. */
+  collapsedPadding: number;
+  expandedScale: number;
+  marginY: number;
+  /** Prevent moving the island by dragging; explicit position reset still works. */
+  positionLocked: boolean;
+  islandMonitor: IslandMonitor;
+  /** Bottom corner radius (px) of the expanded island; its detached and inner panel radii follow it. */
+  islandCornerRadius: number;
+  /** Corner radius (px) of the collapsed bar; tucked and detached collapsed corners follow it. */
+  collapsedCornerRadius: number;
+  islandCornerShape: IslandCornerShape;
+  islandShape: IslandShape;
+  // Optional concave corners where the island joins the screen top.
+  topEdgeShoulders: boolean;
+  topEdgeShoulderSize: number;
+  /** Tallest expanded panel (px) before the todo list, clipboard and messages scroll. */
+  maxPanelHeight: number;
+  /** Agent sessions the expanded Agent page shows before it scrolls. */
+  agentVisibleRows: number;
+  agentHostDisplay: AgentHostDisplay;
+  agentSessionView: AgentSessionView;
+  agentSessionSort: AgentSessionSort;
+  agentSessionGroup: AgentSessionGroup;
+  agentArchiveMotion: AgentArchiveMotion;
+  agentCardEffects: AgentCardEffects;
+  /** How far back (hours) the Agent page lists sessions; one of AGENT_SESSION_HOURS. */
+  agentSessionHours: number;
+  agentShowClaudeCode: boolean;
+  agentShowCodex: boolean;
+  agentShowDsh: boolean;
+  agentShowWorkbuddy: boolean;
+  /** Agents from the plugin market: shown only once installed there, and while switched on here. */
+  agentShowCursor: boolean;
+  agentShowKimiCode: boolean;
+  agentShowHermes: boolean;
+  agentShowZcode: boolean;
+  /** List only running, waiting or stalled sessions on the Agent page. */
+  agentHideFinished: boolean;
+  /** Show how long a session's current (or last) turn has run. */
+  agentShowElapsed: boolean;
+  agentShowModel: boolean;
+  /** The latest prompt and the tool in use on working session rows. */
+  agentShowActivity: boolean;
+  /** Claude's usage limits at the top of the Agent page, when claude-hud keeps a usage snapshot. */
+  agentShowUsage: boolean;
+  agentQuotaSources: AgentQuotaSource[];
+  /** Open the Agent page when a session finishes, fails or waits for the user. */
+  agentAlertCompleted: boolean;
+  agentAlertFailed: boolean;
+  agentAlertWaiting: boolean;
+  /** Open it when a session starts working: every turn, only a new session's first, or never. */
+  agentAlertStarted: AgentAlertStarted;
+  /** How long a page opened for an alert stays, in seconds; one of AGENT_ALERT_SECONDS. */
+  agentAlertSeconds: number;
+  /** A session still waiting on the user pops up once more after this many seconds; 0: never. */
+  agentRemindSeconds: number;
+  /** Claude's or Codex's usage reaching this percent pops up once, and again when it resets; 0: never. */
+  agentQuotaAlertPercent: number;
+  taskTextColor: string;
+  /** Text on the expanded pages; "" follows the background's ink (stageStyle.ts). */
+  pageTextColor: string;
+  pulseColor: string;
+  pulseBrightness: number;
+  islandBackgroundColor: string;
+  todoBackgroundColor: string;
+  showTitle: boolean;
+  showCollapsedText: boolean;
+  showIdleTodoCount: boolean;
+  carryOverIncompleteTodos: boolean;
+  enableTodoReorder: boolean;
+  todoReorderVersion: 1;
+  todoTimerEnabled: boolean;
+  rotateTodos: boolean;
+  todoRotationSeconds: number;
+  todoRotationMode: "switch" | "scroll";
+  /** Vertical travel in logical pixels per second. */
+  todoScrollSpeed: number;
+  messagePreviewSeconds: number;
+  /** A message preview grows with its text, up to the two sizes below, and scrolls past them. */
+  messageAutoExpand: boolean;
+  /** Largest width and height (before the collapsed scale) of an adaptive preview. */
+  messageExpandMaxWidth: number;
+  messageExpandMaxHeight: number;
+  /** Seconds an adaptive preview stays (instead of `messagePreviewSeconds`). */
+  messageExpandSeconds: number;
+  /** Game mode still shows message previews, for `gameNoticeSeconds`, without taking clicks. */
+  gameShowNotices: boolean;
+  gameNoticeSeconds: number;
+  /** Starting a todo timer can also ask for a reminder before it ends; optionally with a sound. */
+  todoTimerReminder: boolean;
+  todoTimerReminderSound: boolean;
+  autoTuck: boolean;
+  tuckStyle: TuckStyle;
+  /** Px of the island left on screen by the "edge" tuck (TUCK_EDGE_HEIGHT). */
+  tuckEdgeHeight: number;
+  /**
+   * (B) Seconds the collapsed island idles before it tucks into a line (TUCK_DELAY_SECONDS).
+   * Replaces `autoTuckSeconds`, which older versions saved and is no longer read.
+   */
+  tuckDelaySeconds: number;
+  /** (A) Seconds after the cursor leaves the open island before it collapses; 0 never (AUTO_COLLAPSE_SECONDS). */
+  autoCollapseSeconds: number;
+  /** An island tucked after idling slides back once the cursor that brought it out leaves. */
+  autoTuckRetract: boolean;
+  /** How long (ms) it waits after the cursor leaves before sliding back. */
+  autoTuckRetractDelayMs: number;
+  /** A tucked island slides back into view to show a new message preview. */
+  revealOnMessage: boolean;
+  expandTrigger: ExpandTrigger;
+  /** Pointer rest time (ms) before a hover opens the island. */
+  hoverExpandDelayMs: number;
+  /** Time (ms) a hover-opened panel stays open after the pointer leaves it. */
+  hoverCollapseDelayMs: number;
+  minimizeAction: MinimizeAction;
+  tuckedHoverAction: TuckedHoverAction;
+  // Keep the collapsed island visible during selected activities (idle timer B only).
+  keepVisibleWhileAgentRunning: boolean;
+  keepVisibleWhileLyrics: boolean;
+  keepVisibleWhileTodoRunning: boolean;
+  /**
+   * Module switches. Off hides the module on the island and stops its background work;
+   * its data is kept. QQ, WeChat and clipboard history use their existing switches.
+   */
+  todoEnabled: boolean;
+  musicEnabled: boolean;
+  agentStatusEnabled: boolean;
+  shelfEnabled: boolean;
+  /** Off hides the island's translate button and releases the global translation shortcut. */
+  translationEnabled: boolean;
+  /** Where translation opens: its own window, or a page of the expanded island. */
+  translationTarget: TranslationTarget;
+  /** Dragging files onto a collapsed or tucked island opens the shelf as a drop zone. */
+  shelfExpandOnDrop: boolean;
+  /** Days after which shelf entries leave the list (0 keeps them). */
+  shelfAutoCleanupDays: number;
+  /** Entries whose file was moved or deleted leave the list instead of showing as missing. */
+  shelfRemoveMissing: boolean;
+  /** An entry leaves the list once it has been dragged out somewhere. */
+  shelfRemoveAfterDragOut: boolean;
+  shelfMaxItems: number;
+  shelfDoubleClick: ShelfDoubleClick;
+  /** The collapsed island shows how many files are on the shelf. */
+  shelfShowCount: boolean;
+  /** Folder of .lrc files searched for the playing song's lyrics; empty for none. */
+  lyricsFolder: string;
+  /** Lyrics not in the folder are looked up on LRCLIB. */
+  lyricsOnline: boolean;
+  /** With online lyrics, also ask Kugou and NetEase (unofficial sources). */
+  lyricsChinese: boolean;
+  /** Fill word-timed lyrics as they are sung, in both island states. */
+  lyricWordFill: boolean;
+  /** Lyrics shown this many ms later (positive) or earlier than the position Windows reports. */
+  lyricsOffsetMs: number;
+  mailEnabled: boolean;
+  /** Copy a newly arrived mail verification code without adding it to clipboard history. */
+  autoCopyOtp: boolean;
+  /** Show the running agent's icon and session title on the collapsed island. */
+  agentTitleEnabled: boolean;
+  /** Which of the agent, the lyric line and a todo the collapsed island shows first when several could. */
+  collapsedPriority: CollapsedItem[];
+  /** The playing song's cover on the collapsed island. */
+  collapsedShowCover: boolean;
+  /** Where the text and each status icon sit on the collapsed island, left to right. */
+  collapsedLayout: CollapsedSlot[];
+  /** Slots dragged off the island in Appearance → On the island; never the text. */
+  collapsedHidden: CollapsedSlot[];
+  /** Order of the page dots in the expanded island's header. */
+  pageOrder: PageDot[];
+  /** While a full-screen app (game, video, slides) is in front: no hover opening or focus, no message pop-ups. */
+  gameDoNotDisturb: boolean;
+  /** While a full-screen app is in front, the island tucks to the top edge and comes back after. */
+  gameAutoTuck: boolean;
+  /** Ctrl + mouse wheel over the expanded island switches its page. */
+  ctrlWheelPages: boolean;
+  /** Clipboard: rows visible in the island before scrolling (3–8). */
+  clipboardVisibleRows: number;
+  /** Show an entry's full content when the pointer rests over it. */
+  clipboardHoverPreview: boolean;
+  /** Todos: rows the todo page shows before it scrolls (3–12), within the panel height limit. */
+  todoVisibleRows: number;
+  /** Clipboard: open history in its own window instead of inside the island. */
+  clipboardDetached: boolean;
+  /** The unpinned clipboard window closes when it loses focus (off by default). */
+  clipboardCloseOnBlur: boolean;
+};
+
+export type LegacyIslandSettings = Partial<IslandSettings> & {
+  /** Before 2026-11-14: "classic" or "liquidGlass", now `material`. */
+  appearanceMode?: unknown;
+  margin?: number;
+  sizeScale?: number;
+  taskTitleColor?: string;
+  pendingTodoColor?: string;
+};

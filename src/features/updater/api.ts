@@ -1,0 +1,72 @@
+import { Channel, invoke } from "@tauri-apps/api/core";
+import { emit, emitTo, listen } from "@tauri-apps/api/event";
+import type { UpdateState } from "./updaterController";
+import { checkArguments, type UpdateTarget } from "./updateChannel.ts";
+
+export type UpdateRequest =
+  | { action: "snapshot" | "check" | "install" | "dismiss" | "beta" | "restore" }
+  | { action: "auto"; enabled: boolean };
+const UPDATE_STATE_EVENT = "fly-island-update-state";
+const UPDATE_REQUEST_EVENT = "fly-island-update-request";
+
+export function listenUpdateState(callback: (state: UpdateState) => void) {
+  return listen<UpdateState>(UPDATE_STATE_EVENT, (event) => callback(event.payload));
+}
+
+export function listenUpdateRequests(callback: (request: UpdateRequest) => void) {
+  return listen<UpdateRequest>(UPDATE_REQUEST_EVENT, (event) => callback(event.payload));
+}
+
+export function publishUpdateState(state: UpdateState) {
+  return emit(UPDATE_STATE_EVENT, state);
+}
+
+export function requestUpdateAction(request: UpdateRequest) {
+  return emitTo("main", UPDATE_REQUEST_EVENT, request);
+}
+
+export function isUpdaterConfigured() {
+  return invoke<boolean>("updater_configured");
+}
+
+export function isAutostartLaunch() {
+  return invoke<boolean>("is_autostart_launch");
+}
+
+export function getUpdaterProxy() {
+  return invoke<string | null>("get_updater_proxy");
+}
+
+/** Mirrors UpdateInfo in src-tauri/src/system/update_channel.rs. */
+export type UpdateInfo = { version: string; body: string | null };
+
+/** Mirrors DownloadEvent in src-tauri/src/system/update_channel.rs. */
+export type DownloadEvent =
+  | { event: "Started"; data: { contentLength: number | null } }
+  | { event: "Progress"; data: { chunkLength: number } }
+  | { event: "Finished" };
+
+/**
+ * Checks the manifest of `target` (updateChannel.ts); the update found is kept natively for
+ * download and install. The beta picked in settings until 3.0.2 is still ignored: only a beta
+ * asked for in About, or a beta already running, checks the beta channel.
+ */
+export function checkUpdate(proxy: string | null, target: UpdateTarget = "stable") {
+  return invoke<UpdateInfo | null>("updater_check", { ...checkArguments(target), proxy });
+}
+
+function eventChannel(onEvent: (event: DownloadEvent) => void) {
+  const channel = new Channel<DownloadEvent>();
+  channel.onmessage = onEvent;
+  return channel;
+}
+
+/** Downloads the update the last check found, without installing it. */
+export function downloadUpdate(onEvent: (event: DownloadEvent) => void) {
+  return invoke<void>("updater_download", { onEvent: eventChannel(onEvent) });
+}
+
+/** Installs the update the last check found, downloading it first if needed. */
+export function downloadAndInstallUpdate(onEvent: (event: DownloadEvent) => void) {
+  return invoke<void>("updater_install", { onEvent: eventChannel(onEvent) });
+}

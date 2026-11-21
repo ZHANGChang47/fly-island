@@ -1,0 +1,423 @@
+use std::{io::{Cursor, Write}, sync::{Arc, Mutex}, time::{Duration, Instant}};
+use serde_json::json;
+use sha2::{Digest, Sha256};
+use super::{manifest::Manifest, packages::{self, IndexEntry}, process::{self, Worker}, protocol, service::Host};
+
+fn manifest() -> Manifest { Manifest::parse(include_bytes!("../../../plugins/example-hello/fly-island-plugin.json")).unwrap() }
+#[test]
+fn validates_manifest_and_protocol() {
+    for (field, value) in [("id", json!("../escape")), ("id", json!("con")), ("apiVersion", json!(2)), ("permissions", json!(["webview"]))] {
+        let mut v = serde_json::to_value(manifest()).unwrap(); v[field] = value;
+        assert!(Manifest::parse(&serde_json::to_vec(&v).unwrap()).is_err());
+    }
+    for path in ["../test.exe", "C:/test.exe", "a\\test.exe", "/test.exe"] {
+        let mut m = manifest(); m.runtime.command = path.into(); assert!(m.validate().is_err());
+    }
+    let publish = |params| json!({"jsonrpc":"2.0","method":"publish","params":params}).to_string();
+    let m = manifest();
+    assert!(protocol::parse_publish(&publish(json!({})), &m).unwrap().is_some());
+    assert!(protocol::parse_publish(&"x".repeat(protocol::MAX_LINE+1), &m).is_err());
+    assert!(protocol::parse_publish("{\"jsonrpc\":\"1.0\"}", &m).is_err());
+    let invalid = json!({"quota":[{"id":"q","label":"q","remainingPercent":101,"secondaryPercent":null,"balance":null,"resetsAt":null,"updatedAt":1}]});
+    assert!(protocol::parse_publish(&publish(invalid), &m).is_err());
+    let mut restricted = m.clone(); restricted.contributes.clear();
+    let n = json!({"notifications":[{"id":"n","sourceId":"test","appName":"test","icon":"plugin","title":"test","body":"test","receivedAt":1,"action":null}]});
+    assert!(protocol::parse_publish(&publish(n), &restricted).is_err());
+    // A plugin page: the manifest names one of the host's icons, and the panel may only use
+    // declared actions.
+    let mut with_panel = serde_json::to_value(&m).unwrap();
+    with_panel["permissions"] = json!(["panel"]);
+    with_panel["contributes"] = json!(["panel"]);
+    with_panel["panel"] = json!({"icon": "battery"});
+    with_panel["actions"] = json!([{"id": "refresh", "label": {"zh-CN": "重新扫描", "en": "Scan again"}}]);
+    let page = Manifest::parse(&serde_json::to_vec(&with_panel).unwrap()).unwrap();
+    let good = json!({"panel": {"headline": "2 个设备", "note": null, "rows": [{"id": "a", "title": "A", "detail": null, "percent": 59, "countdownTo": null, "tone": "warning"}], "actions": ["refresh"], "attention": true}});
+    let parsed = protocol::parse_publish(&publish(good.clone()), &page).unwrap().unwrap();
+    assert!(parsed.panel.is_some_and(|panel| panel.rows.len() == 1 && panel.attention));
+    assert!(protocol::parse_publish(&publish(good.clone()), &m).is_err(), "a panel needs its contribution");
+    for (field, value) in [("percent", json!(101)), ("tone", json!("loud")), ("countdownTo", json!(-1))] {
+        let mut bad = good.clone();
+        bad["panel"]["rows"][0][field] = value;
+        assert!(protocol::parse_publish(&publish(bad), &page).is_err(), "{field}");
+    }
+    let mut undeclared_action = good.clone();
+    undeclared_action["panel"]["actions"] = json!(["rest_now"]);
+    assert!(protocol::parse_publish(&publish(undeclared_action), &page).is_err());
+    let mut bad_manifest = with_panel.clone();
+    bad_manifest["panel"] = json!({"icon": "usb"});
+    assert!(Manifest::parse(&serde_json::to_vec(&bad_manifest).unwrap()).is_err(), "an icon the host cannot draw");
+    let mut no_meta = with_panel.clone();
+    no_meta.as_object_mut().unwrap().remove("panel");
+    assert!(Manifest::parse(&serde_json::to_vec(&no_meta).unwrap()).is_err(), "contribution without a page");
+    for (attempt, seconds) in [1, 2, 4, 8, 16, 32].into_iter().enumerate() {
+        assert_eq!(process::restart_delay(attempt as u32), Some(Duration::from_secs(seconds)));
+    }
+    assert_eq!(process::restart_delay(6), None);
+    assert_eq!(process::restart_delay(u32::MAX), None);
+}
+
+#[test]
+fn all_bundled_manifests_are_accepted() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
+    let mut ids = std::collections::BTreeSet::new();
+    for entry in std::fs::read_dir(root).unwrap().flatten() {
+        let path = entry.path().join("fly-island-plugin.json");
+        if path.is_file() {
+            let manifest = Manifest::parse(&std::fs::read(&path).unwrap())
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            assert!(ids.insert(manifest.id), "Duplicate plugin manifest at {}", path.display());
+        }
+    }
+    assert!(ids.contains("example-hello"));
+    let market: Vec<String> = serde_json::from_str(include_str!("../../../plugins/market-packages.json")).unwrap();
+    assert!(market.iter().all(|id| ids.contains(id)));
+}
+
+#[test]
+fn eye_care_upgrade_rounds_legacy_durations_up_to_whole_minutes() {
+    use super::storage::{upgrade_settings, Installed};
+    let new = Manifest::parse(include_bytes!("../../../plugins/eye-care/fly-island-plugin.json")).unwrap();
+    let mut old = new.clone();
+    let rest = old.settings.iter_mut().find(|s| s.key == "rest-minutes").unwrap();
+    rest.key = "rest".into();
+    rest.kind = "text".into();
+    rest.min = None;
+    rest.max = None;
+    rest.default = json!("20");
+    let mut previous = Installed { manifest: old, enabled: true, directory: Default::default(),
+        development: false, settings: Default::default() };
+    assert_eq!(upgrade_settings(Some(&previous), &new)["rest-minutes"], "1");
+    previous.settings.insert("rest".into(), json!("150"));
+    let migrated = upgrade_settings(Some(&previous), &new);
+    assert_eq!(migrated["rest-minutes"], "3");
+    assert!(!migrated.contains_key("rest"));
+    previous.settings.insert("rest-minutes".into(), json!("3"));
+    assert_eq!(upgrade_settings(Some(&previous), &new)["rest-minutes"], "3");
+    for (old, expected) in [("2.5", "3"), ("0.3333333333333333", "1"), ("60", "60")] {
+        previous.settings.insert("rest-minutes".into(), json!(old));
+        assert_eq!(upgrade_settings(Some(&previous), &new)["rest-minutes"], expected);
+    }
+    assert!(!upgrade_settings(None, &new).contains_key("rest-minutes"));
+}
+
+#[test]
+fn integer_settings_reject_fractions_and_enforce_manifest_bounds() {
+    let manifest = Manifest::parse(include_bytes!("../../../plugins/eye-care/fly-island-plugin.json")).unwrap();
+    for (key, max) in [("period", 720), ("rest-minutes", 60), ("idle", 120)] {
+        let setting = manifest.settings.iter().find(|s| s.key == key).unwrap();
+        assert!(setting.accepts(&json!("1")));
+        assert!(setting.accepts(&json!(max.to_string())));
+        for invalid in ["", "0", "1.5", "-1", "1e1", "NaN", " 2 ", "4294967296"] {
+            assert!(!setting.accepts(&json!(invalid)), "{key}: {invalid}");
+        }
+        assert!(!setting.accepts(&json!((max + 1).to_string())));
+        assert!(!setting.accepts(&json!(1)));
+    }
+    for (min, max) in [(Some(3), Some(2)), (None, Some(2)), (Some(1), None)] {
+        let mut invalid = manifest.clone();
+        invalid.settings[0].min = min;
+        invalid.settings[0].max = max;
+        assert!(invalid.validate().is_err());
+    }
+}
+
+#[test]
+fn windows_device_names_and_archive_aliases_are_rejected() {
+    for path in ["CON.txt", "aux.exe", "dir/COM1.log", "LPT9.exe", "LPT¹.log", "a./file", "a /file", "x:stream", "dir//x", "dir/../x"] {
+        assert!(!super::manifest::relative_path(path), "{path}");
+        let root = temporary(&format!("path-{}", path.bytes().map(u32::from).sum::<u32>()));
+        let bytes = zip(&[(path, b"bad")]);
+        assert!(packages::extract(&bytes, &root, &entry(&bytes, String::new())).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn stderr_does_not_leak_split_or_multiline_credentials() {
+    let root = temporary("redaction");
+    let secret = "sensitive-token".to_owned();
+    let mut input = format!("{}{}\n", "x".repeat(8188), secret);
+    input.push_str("before sensitive-token after\nfirst-secret\nsecond-secret\nunterminated-sensitive");
+    let path = root.join("log");
+    process::log_stderr(Cursor::new(input), &path, &[secret, "first-secret\nsecond-secret".into()]);
+    let raw = std::fs::read_to_string(path).unwrap();
+    assert!(!raw.contains("sensitive") && !raw.contains("first-secret") && !raw.contains("second-secret"));
+    assert!(raw.contains("before [redacted] after"));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn download_policy_and_file_limits_are_enforced() {
+    for (url, dev, allowed) in [
+        ("https://github.com/a", false, true), ("http://github.com/a", true, false),
+        ("http://127.0.0.1/a", true, true), ("http://127.0.0.1/a", false, false),
+        ("https://user:password@example.com/a", false, false), ("file:///C:/a", false, false),
+    ] { assert_eq!(packages::network_source_allowed(&reqwest::Url::parse(url).unwrap(), dev), allowed, "{url}"); }
+    let root = temporary("local-bound");
+    let path = root.join("file"); std::fs::write(&path, [1; 32]).unwrap();
+    assert!(tauri::async_runtime::block_on(packages::download(path.to_str().unwrap(), true, 16)).is_err());
+    assert!(tauri::async_runtime::block_on(packages::download(path.to_str().unwrap(), false, 64)).is_err());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn redirects_cannot_escape_the_local_http_policy() {
+    use std::{io::Read, net::TcpListener};
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/index", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let mut request = [0; 2048]; let _ = stream.read(&mut request).unwrap();
+        stream.write_all(b"HTTP/1.1 302 Found\r\nLocation: http://example.com/not-local\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+    });
+    let error = tauri::async_runtime::block_on(packages::download(&url, true, 1024)).unwrap_err();
+    server.join().unwrap();
+    assert!(!error.contains("example.com"), "URL omitted from diagnostics: {error}");
+}
+
+#[test]
+fn incompatible_plugin_does_not_hide_compatible_index_entries() {
+    let good = entry(b"zip", "https://example.com/a.zip".into());
+    let mut future = good.clone(); future.id = "future-plugin".into(); future.min_app_version = "999.0.0".into();
+    let entries = packages::parse_index(&serde_json::to_vec(&vec![good, future]).unwrap()).unwrap();
+    assert_eq!(entries.len(), 1); assert_eq!(entries[0].id, "example-hello");
+}
+
+#[test]
+fn registry_drops_secret_and_unknown_plaintext_settings() {
+    let root = temporary("registry-settings");
+    let mut m = manifest();
+    m.settings.push(serde_json::from_value(json!({"key":"api_key","label":{"zh-CN":"密钥","en":"Key"},"type":"secret","default":""})).unwrap());
+    let p = super::storage::Installed { manifest:m, enabled:false, directory:root.clone(), development:false,
+        settings: [("api_key".into(), json!("never-persist")), ("unknown".into(), json!(true))].into() };
+    let registry = super::storage::Registry { installed:[(p.manifest.id.clone(), p)].into(), ..Default::default() };
+    super::storage::save(&root, &registry).unwrap();
+    assert!(super::storage::load(&root).installed["example-hello"].settings.is_empty());
+    std::fs::remove_dir_all(root).unwrap();
+}
+fn zip(files: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    for (name, bytes) in files {
+        writer.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+        writer.write_all(bytes).unwrap();
+    }
+    writer.finish().unwrap().into_inner()
+}
+fn entry(bytes: &[u8], url: String) -> IndexEntry {
+    let m = manifest();
+    IndexEntry { id: m.id, version: m.version, name: m.name, description: m.description, api_version: 1, url, sha256: format!("{:x}", Sha256::digest(bytes)), size: bytes.len() as u64, min_app_version: env!("CARGO_PKG_VERSION").into() }
+}
+fn temporary(name: &str) -> std::path::PathBuf {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../node_modules/.cache/plugin-tests").join(format!("{name}-{}", std::process::id()));
+    if root.exists() { std::fs::remove_dir_all(&root).unwrap(); }
+    std::fs::create_dir_all(&root).unwrap(); root
+}
+#[test]
+fn rejects_hash_and_zip_traversal() {
+    let root = temporary("archive");
+    let bytes = zip(&[("../escape.exe", b"bad")]);
+    let e = entry(&bytes, String::new());
+    assert!(packages::extract(&bytes, &root, &e).is_err());
+    assert!(packages::verify(b"changed", &e).is_err());
+    std::fs::remove_dir_all(root).unwrap();
+}
+fn fixture() -> std::path::PathBuf {
+    let mut candidates = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(debug_dir) = cur.parent().and_then(|p| p.parent()) {
+            candidates.push(debug_dir.join("example-hello.exe"));
+        }
+    }
+    if let Some(target) = std::env::var_os("CARGO_TARGET_DIR") {
+        candidates.push(std::path::PathBuf::from(target).join("debug/example-hello.exe"));
+    }
+    candidates.push(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/debug/example-hello.exe"));
+    candidates.push(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/debug/example-hello.exe"));
+    candidates.push(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/target/debug/example-hello.exe"));
+    for c in candidates {
+        if c.exists() {
+            return c;
+        }
+    }
+    panic!("Build plugins/example-hello first with the same CARGO_TARGET_DIR");
+}
+#[test]
+fn example_worker_handshake_actions_and_stop() {
+    let root = temporary("process");
+    std::fs::copy(fixture(), root.join("example-hello.exe")).unwrap();
+    let live = Arc::new(Mutex::new(Vec::new())); let output = live.clone();
+    let worker = Worker::start(root.clone(), manifest(), json!({"interval":"5"}), root.join("stderr.log"), Arc::new(move |data, status| { output.lock().unwrap().push((status.to_owned(), data)); }));
+    let until = Instant::now() + Duration::from_secs(8);
+    while !live.lock().unwrap().iter().any(|(_, d)| !d.quota.is_empty()) && Instant::now() < until { std::thread::sleep(Duration::from_millis(20)); }
+    assert!(live.lock().unwrap().iter().any(|(s, d)| s == "running" && d.quota.len() == 1 && d.notifications.len() == 1 && d.sessions.len() == 1));
+    assert_eq!(worker.request("action", json!({"id":"hello"})).unwrap().recv_timeout(Duration::from_secs(3)).unwrap().unwrap(), json!(true));
+    let before = Instant::now(); drop(worker); assert!(before.elapsed() < Duration::from_secs(2));
+    std::fs::remove_dir_all(root).unwrap();
+}
+#[test]
+fn local_index_install_enable_publish_disable_uninstall() {
+    let root = temporary("installation");
+    let exe = std::fs::read(fixture()).unwrap(); let m = serde_json::to_vec(&manifest()).unwrap();
+    let bytes = zip(&[("fly-island-plugin.json", &m), ("example-hello.exe", &exe)]);
+    let archive = root.join("example.zip"); std::fs::write(&archive, &bytes).unwrap();
+    let e = entry(&bytes, reqwest::Url::from_file_path(&archive).unwrap().to_string());
+    let index = root.join("plugins-index.json"); std::fs::write(&index, serde_json::to_vec(&vec![e]).unwrap()).unwrap();
+    let host = Host::new(root.join("data"), None, true).unwrap(); let mut registry = host.snapshot().registry;
+    registry.developer_mode = true; registry.index_url = index.to_string_lossy().into_owned(); host.persist(registry).unwrap();
+    assert!(tauri::async_runtime::block_on(host.install("not-in-index")).is_err());
+    tauri::async_runtime::block_on(host.install("example-hello")).unwrap();
+    assert!(!host.snapshot().registry.installed["example-hello"].enabled);
+    host.enable("example-hello", true).unwrap();
+    let until = Instant::now() + Duration::from_secs(8);
+    while !host.snapshot().live.get("example-hello").is_some_and(|l| !l.data.quota.is_empty()) && Instant::now() < until { std::thread::sleep(Duration::from_millis(20)); }
+    assert_eq!(host.snapshot().live["example-hello"].data.notifications.len(), 1);
+    assert_eq!(host.action("example-hello", "hello").unwrap(), json!(true));
+    host.shutdown();
+    assert!(host.workers.lock().unwrap().is_empty() && host.snapshot().live.is_empty());
+    host.enable("example-hello", true).unwrap();
+    let until = Instant::now() + Duration::from_secs(8);
+    while !host.snapshot().live.get("example-hello").is_some_and(|l| !l.data.quota.is_empty()) && Instant::now() < until { std::thread::sleep(Duration::from_millis(20)); }
+    assert_eq!(host.action("example-hello", "hello").unwrap(), json!(true));
+    host.enable("example-hello", false).unwrap(); assert!(host.snapshot().live.is_empty());
+    host.uninstall("example-hello").unwrap(); assert!(host.snapshot().registry.installed.is_empty());
+    assert!(!host.root.join("plugins/example-hello").exists()); drop(host); std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn built_artifacts_index_installs_and_runs() {
+    let index_file = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../artifacts/plugins/plugins-index.json");
+    if !index_file.exists() {
+        return;
+    }
+    let root = temporary("built-index-test");
+    let host = Host::new(root.join("data"), None, true).unwrap();
+    let mut registry = host.snapshot().registry;
+    registry.developer_mode = true;
+    registry.index_url = reqwest::Url::from_file_path(&index_file).unwrap().to_string();
+    host.persist(registry).unwrap();
+
+    let entries = tauri::async_runtime::block_on(host.catalog()).unwrap();
+    if !entries.iter().any(|entry| entry.id == "example-hello") {
+        assert!(!entries.is_empty());
+        for entry in entries {
+            let id = entry.id.as_str();
+            tauri::async_runtime::block_on(host.install(id)).unwrap();
+            assert!(!host.snapshot().registry.installed[id].enabled);
+            match id {
+                "eye-care" => {
+                    host.enable(id, true).unwrap();
+                    let until = Instant::now() + Duration::from_secs(8);
+                    while !host.snapshot().live.get(id).is_some_and(|entry| entry.data.panel.is_some()) && Instant::now() < until {
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                    assert!(host.snapshot().live[id].data.panel.is_some());
+                    host.enable(id, false).unwrap();
+                    host.uninstall(id).unwrap();
+                }
+                "device-battery" => {
+                    assert!(host.device_battery().is_err());
+                    host.enable(id, true).unwrap();
+                    assert!(host.device_battery().is_ok());
+                    host.uninstall(id).unwrap();
+                    assert!(host.device_battery().is_err());
+                }
+                // Checking the real MiniMax account and changing its hooks require an isolated user profile.
+                "minimax" => {}
+                _ => panic!("Unexpected package in the selected market: {id}"),
+            }
+        }
+        drop(host);
+        std::fs::remove_dir_all(root).unwrap();
+        return;
+    }
+
+    tauri::async_runtime::block_on(host.install("example-hello")).unwrap();
+    assert!(host.snapshot().registry.installed.contains_key("example-hello"));
+    assert!(!host.snapshot().registry.installed["example-hello"].enabled);
+
+    host.enable("example-hello", true).unwrap();
+    let until = Instant::now() + Duration::from_secs(8);
+    while !host.snapshot().live.get("example-hello").is_some_and(|l| !l.data.quota.is_empty()) && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let live = host.snapshot().live;
+    assert!(live.contains_key("example-hello"));
+    assert_eq!(live["example-hello"].data.quota.len(), 1);
+    assert_eq!(live["example-hello"].data.notifications.len(), 1);
+
+    host.enable("example-hello", false).unwrap();
+    assert!(host.snapshot().live.is_empty());
+    host.uninstall("example-hello").unwrap();
+    assert!(host.snapshot().registry.installed.is_empty());
+
+    drop(host);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn disabled_host_does_not_start_fetch_or_change_saved_plugins() {
+    let root = temporary("disabled-host");
+    let plugin = super::storage::Installed {
+        manifest: manifest(), enabled: true, directory: root.join("plugins/example-hello"),
+        development: false, settings: Default::default(),
+    };
+    let registry = super::storage::Registry {
+        installed: [(plugin.manifest.id.clone(), plugin)].into(),
+        developer_mode: true, index_url: "http://127.0.0.1:1/must-not-fetch".into(),
+    };
+    super::storage::save(&root, &registry).unwrap();
+    let saved = std::fs::read(root.join("plugins-state.json")).unwrap();
+    let host = Host::new(root.clone(), None, false).unwrap();
+    assert!(host.snapshot().registry.installed.is_empty());
+    host.start("example-hello").unwrap();
+    assert!(tauri::async_runtime::block_on(host.catalog()).unwrap().is_empty());
+    tauri::async_runtime::block_on(host.install("example-hello")).unwrap();
+    host.enable("example-hello", false).unwrap();
+    host.setting("example-hello", "enabled", json!(false)).unwrap();
+    host.uninstall("example-hello").unwrap();
+    assert_eq!(host.action("example-hello", "hello").unwrap(), serde_json::Value::Null);
+    host.persist(Default::default()).unwrap();
+    assert!(host.workers.lock().unwrap().is_empty() && host.snapshot().live.is_empty());
+    assert!(!root.join("plugins").exists() && !root.join("plugin-logs").exists());
+    assert_eq!(std::fs::read(root.join("plugins-state.json")).unwrap(), saved);
+    drop(host);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn market_host_only_exposes_approved_non_development_packages() {
+    let root = temporary("market-only");
+    let host = Host::market(root.clone(), None).unwrap();
+    let from = |name: &str, manifest: Manifest, development| super::storage::Installed {
+        manifest, enabled: true, directory: root.join("plugins").join(name),
+        development, settings: Default::default(),
+    };
+    let mut registry = host.snapshot().registry;
+    registry.developer_mode = true;
+    registry.index_url = "http://127.0.0.1:1/local-index".into();
+    let eye = Manifest::parse(include_bytes!("../../../plugins/eye-care/fly-island-plugin.json")).unwrap();
+    let mini = Manifest::parse(include_bytes!("../../../plugins/minimax/fly-island-plugin.json")).unwrap();
+    registry.installed.insert("example-hello".into(), from("example-hello", manifest(), false));
+    registry.installed.insert("eye-care".into(), from("eye-care", eye, false));
+    registry.installed.insert("minimax".into(), from("minimax", mini, true));
+    host.persist(registry).unwrap();
+    let public = host.public_snapshot();
+    let market: Vec<String> = serde_json::from_str(include_str!("../../../plugins/market-packages.json")).unwrap();
+    assert!(!public.registry.installed.contains_key("example-hello"));
+    assert!(!public.registry.installed.contains_key("minimax"));
+    assert_eq!(public.registry.installed.contains_key("eye-care"), market.iter().any(|id| id == "eye-care"));
+    assert!(!public.registry.developer_mode && public.registry.index_url.is_empty());
+    assert!(!host.allows_development());
+    assert!(!host.source().1);
+    assert!(host.start("example-hello").is_err());
+    assert_eq!(
+        tauri::async_runtime::block_on(host.install("example-hello")).unwrap_err(),
+        "Plugin is unavailable in this build"
+    );
+    assert!(host.start("minimax").is_err());
+    assert!(host.uninstall("minimax").is_err());
+    assert_eq!(host.snapshot().registry.installed.len(), 3);
+    drop(host);
+    std::fs::remove_dir_all(root).unwrap();
+}

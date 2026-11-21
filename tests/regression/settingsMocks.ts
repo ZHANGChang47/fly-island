@@ -1,0 +1,121 @@
+// The Tauri commands the settings window calls, answered as the island would, for the settings
+// regression pages. Importing this installs the mocks; the arrays record what was called.
+import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
+import { emit } from "@tauri-apps/api/event";
+import type { WorkbuddyState } from "../../src/features/agent-status/api";
+import type { MailSnapshot } from "../../src/features/messages/mail/api";
+import type { MusicShortcuts } from "../../src/features/media/shortcuts";
+
+let revision = 0;
+export const commands: string[] = [];
+let workbuddy: WorkbuddyState = { status: "signedOut" };
+export async function setMockWorkbuddy(state: WorkbuddyState) {
+  workbuddy = state;
+  await emit("workbuddy-usage-changed", state);
+}
+export const mailCalls: { command: string; args: Record<string, unknown> }[] = [];
+const mailbox = (email: string, extra: Partial<MailSnapshot> = {}): MailSnapshot => ({
+  revision: ++revision, email, configured: true, enabled: true, syncing: false, status: "connected",
+  unreadCount: 2, items: [], lastSyncedAt: 0, error: null, ...extra,
+});
+let mailboxes: MailSnapshot[] = [mailbox("demo@qq.com"), mailbox("louis@163.com", { status: "authRequired", enabled: false, unreadCount: null })];
+let replyMarkerOn = false;
+let zcodeApiKeySettings = { platform: "bigmodel", hasKey: false, maskedKey: null as string | null };
+export const REPLY_MARKER = { path: "C:\\Users\\demo\\.claude\\rules\\fly-island-reply-marker.md", content: "<!-- fly-island: reply marker v2 -->\n## Reply status marker" };
+const replyMarker = () => ({ installed: replyMarkerOn, outdated: false, ...REPLY_MARKER });
+export const replyMarkerCalls: boolean[] = [];
+export const translationShortcutCalls: string[] = [];
+export const mediaShortcutCalls: { enabled: boolean; shortcuts: MusicShortcuts }[] = [];
+// Kept like the native store, so a page opened again reads back what was saved.
+let clipboardSettings = { enabled: true, captureImages: true, maxItems: 100, shortcut: "Ctrl+Shift+V", shortcutEnabled: true };
+mockIPC((command, payload) => {
+  commands.push(command);
+  const args = (payload ?? {}) as Record<string, unknown>;
+  switch (command) {
+    case "list_installed_fonts": return [
+      { family: "Consolas", label: "Consolas" },
+      { family: "Microsoft YaHei", label: args.locale === "zh-CN" ? "微软雅黑" : "Microsoft YaHei" },
+    ];
+    case "search_weather_cities": return [{ name: "北京 · 中国", latitude: 39.9, longitude: 116.4 }];
+    case "locate_weather": return { location: { name: "深圳市 · 广东省", latitude: 22.54, longitude: 114.06 }, source: "windows" };
+    case "get_current_weather": return { temperature: 23, code: 2, observedAt: Date.now(), fetchedAt: Date.now() };
+    case "get_workbuddy_usage": {
+      if (args.refreshNow) return setMockWorkbuddy({ status: "connected", usage: { remaining: 50, total: 500, updatedAt: Date.now() } }).then(() => workbuddy);
+      return workbuddy;
+    }
+    case "open_workbuddy_login": return null;
+    case "disconnect_workbuddy": return setMockWorkbuddy({ status: "signedOut" });
+    case "netease_plugin_status": return { state: "none", supported: true, tested: true, version: "3.1.41", arch: "x64", installDir: "D:\\CloudMusic", running: false, legacyInfLink: false, pluginDir: "C:\\betterncm\\plugins" };
+    case "install_netease_plugin":
+    case "uninstall_netease_plugin": return { keptForeignLoader: false, preservedFiles: [] };
+    case "get_media_diagnostics": return { players: [
+      { sourceAppId: "QQMusic", label: "QQ音乐", hasSession: true, hasTimeline: true, hasPluginTrackId: false,
+        exePath: null, directory: null, version: "21.10.2962.0", status: "ok", neteasePluginState: null },
+      { sourceAppId: "cloudmusic.exe", label: "网易云音乐", hasSession: true, hasTimeline: false, hasPluginTrackId: false,
+        exePath: null, directory: null, version: null, status: "neteaseNeedsPlugin", neteasePluginState: "none" },
+    ] };
+    case "get_reply_marker_state": return replyMarker();
+    case "set_reply_marker": replyMarkerCalls.push(replyMarkerOn = Boolean(args.enabled)); return replyMarker();
+    // Two players open, NetEase playing; Spotify is in the saved order but not open.
+    case "get_media_state": return { sessions: [{ id: "QQMusic", label: "QQ音乐", playing: false }, { id: "cloudmusic.exe", label: "网易云音乐", playing: true }] };
+    case "get_launch_at_startup": return false;
+    case "is_launch_at_startup_disabled": return false;
+    case "get_config_import_report": return null;
+    case "dismiss_config_import_report": return null;
+    case "export_config": return true;
+    case "read_config_import": return null;
+
+    case "get_media_shortcut_errors": return {};
+    case "set_media_shortcuts": mediaShortcutCalls.push({ enabled: Boolean(args.enabled), shortcuts: args.shortcuts as MusicShortcuts }); return null;
+    case "set_launch_at_startup": return null;
+    case "get_default_todo_save_directory": return "";
+    case "get_clipboard_history": return { settings: clipboardSettings, items: [] };
+    case "set_clipboard_history_settings":
+      clipboardSettings = { ...clipboardSettings, ...(args.settings as object | undefined) };
+      return { settings: clipboardSettings, items: [] };
+    case "get_agent_status": return { codex: { phase: "idle", updatedAt: 0 }, claudeCode: { phase: "idle", updatedAt: 0 }, updatedAt: 0, statusPath: "C:\\Users\\demo\\AppData\\Roaming\\com.flyisland.app\\agent-status.json" };
+    case "get_zcode_api_key_settings": return zcodeApiKeySettings;
+    case "save_zcode_api_key_settings":
+      zcodeApiKeySettings = {
+        platform: String(args.platform),
+        hasKey: args.apiKey === null ? zcodeApiKeySettings.hasKey : Boolean(args.apiKey),
+        maskedKey: args.apiKey === null ? zcodeApiKeySettings.maskedKey : args.apiKey ? "********" : null,
+      };
+      return zcodeApiKeySettings;
+    case "clear_zcode_api_key": zcodeApiKeySettings = { ...zcodeApiKeySettings, hasKey: false, maskedKey: null }; return zcodeApiKeySettings;
+    case "get_zcode_usage": return zcodeApiKeySettings.hasKey ? {
+      updatedAt: Date.now(), fiveHour: { name: "", used: 10, resetsAt: null }, sevenDay: { name: "", used: 20, resetsAt: null }, models: [], plan: "Coding Plan", source: "zcode",
+    } : null;
+    case "get_qq_mail_state": return mailboxes;
+    case "connect_qq_mail":
+    case "disconnect_qq_mail":
+    case "set_qq_mail_enabled": {
+      mailCalls.push({ command, args });
+      const email = String(args.email).trim().toLowerCase();
+      const next = command === "disconnect_qq_mail"
+        ? mailbox(email, { configured: false, enabled: false, status: "disconnected", unreadCount: null })
+        : mailbox(email, { enabled: args.enabled !== false, status: args.enabled === false ? "paused" : "connected" });
+      mailboxes = [...mailboxes.filter((box) => box.email !== email), ...(next.configured ? [next] : [])];
+      return next;
+    }
+    case "get_qq_notification_state": return { revision: ++revision, enabled: false, status: "disabled", items: [], error: null };
+    case "set_qq_notifications_enabled": return { revision: ++revision, enabled: args.enabled, status: args.enabled ? "listening" : "disabled", items: [], error: null };
+    case "get_wechat_reminder_state":
+    case "set_wechat_reminders_enabled": return { revision: ++revision, enabled: args.enabled ?? true, status: args.enabled === false ? "disabled" : "listening", pending: false, lastAttentionAt: null, error: null, previewEnabled: false, previewStatus: "off", hideMinimizedTaskbar: false, messages: [] };
+    case "has_translation_secret": return args.provider === "deepseek";
+    case "set_translation_shortcut":
+      translationShortcutCalls.push(String(args.shortcut));
+      // Taken by another program, as Windows would answer.
+      if (args.shortcut === "Ctrl+Alt+Q") throw "快捷键 Ctrl+Alt+Q 已被占用或无法注册：热键已被注册。";
+      return args.shortcut;
+    case "updater_configured": return true;
+    case "get_updater_proxy": return null;
+    case "plugin:app|version": return "0.0.0-test";
+    case "get_agent_hooks_state": return { codex: "notInstalled", claudeCode: "notInstalled", scriptsOutdated: false };
+    case "list_sound_packs": return [{ id: "chimes-1", name: "Chimes", author: "Ann", license: "CC0-1.0", sounds: { complete: "complete.wav", error: "error.wav" } }];
+    case "get_plugins": return { registry: { installed: {}, developerMode: false, indexUrl: "" }, live: {} };
+    case "get_plugins_index": return [];
+    default: return null;
+  }
+}, { shouldMockEvents: true });
+mockWindows("settings");

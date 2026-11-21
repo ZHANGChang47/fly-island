@@ -1,0 +1,183 @@
+import { useMemo, useState } from "react";
+import { Check, ChevronLeft, ChevronRight, CornerUpLeft, Plus, Trash2 } from "lucide-react";
+import { useLocale, useTranslation } from "../../i18n";
+import { dayDots, dayHeading, getMonthGrid, monthOf, shiftMonth, type CalendarTodo } from "./calendar";
+import { TodoDayDetail } from "./TodoDayDetail";
+import { TodoDayRow } from "./TodoDayRow";
+import "./TodoCalendar.css";
+import { useNativePlugins } from "../plugins/native";
+import { calendarMarkOn } from "./calendar-marks";
+import "./calendar-marks/calendar-marks.css";
+
+/** A compact month beside the chosen day's list; today or a later day can take new todos. */
+export function TodoCalendar({
+  today,
+  dayTodos,
+  onAddTodoForDay,
+  onDeleteScheduled,
+}: {
+  today: string;
+  dayTodos: Map<string, CalendarTodo[]>;
+  onAddTodoForDay: (title: string, date: string) => void;
+  onDeleteScheduled: (id: string) => void;
+}) {
+  const t = useTranslation();
+  const { locale } = useLocale();
+  const [month, setMonth] = useState(() => monthOf(today));
+  const [selected, setSelected] = useState(today);
+  const [draft, setDraft] = useState("");
+  const grid = useMemo(() => getMonthGrid(month), [month]);
+  const formats = useMemo(() => ({
+    month: new Intl.DateTimeFormat(t.localeTag, { year: "numeric", month: "short" }),
+    weekday: new Intl.DateTimeFormat(t.localeTag, { weekday: "narrow" }),
+  }), [t.localeTag]);
+  const toDate = (date: string) => new Date(`${date}T00:00:00`);
+  const monthTitle = formats.month.format(toDate(`${month}-01`));
+  const marksEnabled = useNativePlugins().calendarMarks && locale === "zh-CN";
+  const selectedMark = marksEnabled ? calendarMarkOn(selected, t.notebook.calendarMarks) : null;
+  const selectedTodos = dayTodos.get(selected) ?? [];
+  const selectedLabel = dayHeading(selected, today, t.notebook);
+  const canAdd = selected >= today;
+  const openToday = new Set(dayTodos.get(today)?.filter((todo) => !todo.completed).map((todo) => todo.title.trim()));
+
+  const select = (date: string) => {
+    setMonth(monthOf(date));
+    if (date === selected) return;
+    setSelected(date);
+    setDraft("");
+  };
+  const add = () => {
+    if (!draft.trim()) return;
+    onAddTodoForDay(draft, selected);
+    setDraft("");
+  };
+
+  return (
+    <div className="todo-calendar">
+      <nav className="todo-calendar__month" aria-label={t.notebook.pickDate}>
+        <div className="todo-calendar__nav">
+          <time className="todo-calendar__title" dateTime={month} title={monthTitle} aria-live="polite">{monthTitle}</time>
+          <button
+            className="todo-calendar__today"
+            type="button"
+            aria-label={t.notebook.calendarGoToToday}
+            disabled={month === monthOf(today) && selected === today}
+            onClick={() => select(today)}
+          >
+            {t.notebook.dateToday}
+          </button>
+          <div className="todo-calendar__arrows">
+            <button type="button" aria-label={t.notebook.previousMonth} onClick={() => setMonth(shiftMonth(month, -1))}>
+              <ChevronLeft size={15} strokeWidth={2.2} aria-hidden="true" />
+            </button>
+            <button type="button" aria-label={t.notebook.nextMonth} onClick={() => setMonth(shiftMonth(month, 1))}>
+              <ChevronRight size={15} strokeWidth={2.2} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        <div className={marksEnabled ? "todo-calendar__grid todo-calendar__grid--marks" : "todo-calendar__grid"}>
+          {grid.slice(0, 7).map((date) => (
+            <span key={`w${date}`} className="todo-calendar__weekday" aria-hidden="true">
+              {formats.weekday.format(toDate(date))}
+            </span>
+          ))}
+          {grid.map((date) => {
+            const items = dayTodos.get(date) ?? [];
+            const mark = marksEnabled ? calendarMarkOn(date, t.notebook.calendarMarks) : null;
+            const outside = monthOf(date) !== month;
+            const dayLabel = t.notebook.dayTodos(dayHeading(date, today, t.notebook), items.length);
+            const dots = dayDots(items);
+            const className = [
+              "todo-calendar__day",
+              outside ? "todo-calendar__day--outside" : "",
+              date === today ? "todo-calendar__day--today" : "",
+              mark?.rest ? "todo-calendar__day--rest" : "",
+            ].filter(Boolean).join(" ");
+            return (
+              <button
+                key={date}
+                className={className}
+                type="button"
+                aria-pressed={date === selected}
+                aria-current={date === today ? "date" : undefined}
+                aria-label={mark?.spoken ? `${dayLabel}${t.notebook.calendarMarks.separator}${mark.spoken}` : dayLabel}
+                title={mark?.spoken || undefined}
+                data-date={date}
+                onClick={() => select(date)}
+              >
+                <span className="todo-calendar__number" aria-hidden="true">{Number(date.slice(8))}</span>
+                {!outside && mark?.caption ? (
+                  <span className="todo-calendar__caption-text" data-tone={mark.tone} aria-hidden="true">{mark.caption}</span>
+                ) : null}
+                {dots.length > 0 ? (
+                  <span className="todo-calendar__dots" aria-hidden="true">
+                    {dots.map((dot, index) => <span key={index} className={`todo-calendar__dot todo-calendar__dot--${dot}`} />)}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+      <TodoDayDetail
+        date={selected}
+        today={today}
+        calendarNote={selectedMark?.detail}
+        summary={selectedTodos.length > 0 ? t.notebook.doneOf(
+          selectedTodos.filter((todo) => todo.completed).length, selectedTodos.length,
+        ) : undefined}
+        composer={canAdd && (
+          <label className="todo-calendar__add">
+            <Plus size={13} strokeWidth={2.4} aria-hidden="true" />
+            <input
+              value={draft}
+              placeholder={t.notebook.addTodo}
+              aria-label={t.notebook.addTaskFor(selectedLabel)}
+              spellCheck={false}
+              onChange={(event) => setDraft(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  add();
+                }
+              }}
+            />
+          </label>
+        )}
+      >
+        {selectedTodos.map((todo) => {
+          const moved = openToday.has(todo.title.trim());
+          return (
+            <TodoDayRow
+              key={todo.id}
+              title={todo.title}
+              completed={todo.completed}
+              scheduled={todo.scheduled}
+              action={todo.scheduled ? (
+                <button
+                  className="todo-day-row__button todo-day-row__button--danger"
+                  type="button"
+                  aria-label={t.notebook.deleteScheduled(todo.title)}
+                  onClick={() => onDeleteScheduled(todo.id)}
+                >
+                  <Trash2 size={12} strokeWidth={2.2} aria-hidden="true" />
+                </button>
+              ) : !canAdd && !todo.completed && (
+                <button
+                  className="todo-day-row__button"
+                  type="button"
+                  disabled={moved}
+                  aria-label={moved ? t.notebook.alreadyToday : t.notebook.restoreTodo(todo.title)}
+                  title={moved ? t.notebook.alreadyToday : t.notebook.moveToToday}
+                  onClick={() => onAddTodoForDay(todo.title, today)}
+                >
+                  {moved ? <Check size={12} strokeWidth={2.4} aria-hidden="true" /> : <CornerUpLeft size={12} strokeWidth={2.4} aria-hidden="true" />}
+                </button>
+              )}
+            />
+          );
+        })}
+      </TodoDayDetail>
+    </div>
+  );
+}
