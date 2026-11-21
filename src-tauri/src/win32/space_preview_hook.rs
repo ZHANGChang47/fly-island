@@ -67,15 +67,15 @@ fn run_hook_loop() {
     let mut message = Default::default();
     let _ = unsafe { PeekMessageW(&mut message, None, WM_NULL, WM_NULL, PM_NOREMOVE) };
 
-    if message_window::register_class::<PreviewMessageWindow>(module, "FocuSDSpacePreviewHook")
+    if message_window::register_class::<PreviewMessageWindow>(module, "FlyIslandSpacePreviewHook")
         .is_err()
     {
         return;
     }
     let Ok(window_handle) = message_window::create_message_only_window(
         module,
-        "FocuSDSpacePreviewHook",
-        "FocuSD Space Preview",
+        "FlyIslandSpacePreviewHook",
+        "Fly Island Space Preview",
     ) else {
         return;
     };

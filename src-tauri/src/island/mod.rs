@@ -1,6 +1,7 @@
 //! Main island window: Tauri commands, window access, and the submodules for state,
 //! stage geometry, liquid glass, cursor passthrough and top-edge attachment.
 
+pub(crate) mod glass_capture;
 pub(crate) mod focus;
 mod follow;
 mod geometry;
@@ -23,9 +24,10 @@ use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 use geometry::{
     monitor_for_island_position, DEFAULT_EXPANDED_ISLAND_HEIGHT, EXPANDED_ISLAND_HEIGHT_RANGE,
-    MAX_COLLAPSED_ISLAND_HEIGHT, MAX_COLLAPSED_ISLAND_WIDTH, MAX_CORNER_RADIUS,
-    MIN_COLLAPSED_ISLAND_HEIGHT, MIN_COLLAPSED_ISLAND_WIDTH, MIN_CORNER_RADIUS,
-    MIN_EXPANDED_ISLAND_HEIGHT, POSITION_ANIMATION_GENERATION,
+    MAX_COLLAPSED_CORNER_RADIUS, MAX_COLLAPSED_ISLAND_HEIGHT, MAX_COLLAPSED_ISLAND_WIDTH, MAX_CORNER_RADIUS,
+    MIN_COLLAPSED_CORNER_RADIUS, MIN_COLLAPSED_ISLAND_HEIGHT, MIN_COLLAPSED_ISLAND_WIDTH, MIN_CORNER_RADIUS,
+    MIN_EXPANDED_ISLAND_HEIGHT, MAX_TUCKED_EDGE_HEIGHT, MIN_TUCKED_EDGE_HEIGHT,
+    POSITION_ANIMATION_GENERATION,
 };
 use glass::{apply_glass_material, parse_hex_color};
 use crate::win32;
@@ -75,14 +77,19 @@ pub fn set_island_interaction(
     custom_position: Option<IslandPosition>,
     is_tucked: Option<bool>,
     tuck_style: Option<String>,
+    tuck_edge_height: Option<f64>,
     animate_position: Option<bool>,
     glass_enabled: Option<bool>,
     glass_intensity: Option<f64>,
     glass_tint: Option<String>,
     corner_radius: Option<f64>,
+    collapsed_corner_radius: Option<f64>,
     corner_shape: Option<String>,
     monitor_follow: Option<String>,
     position_locked: Option<bool>,
+    notice_width: Option<f64>,
+    notice_height: Option<f64>,
+    click_through: Option<bool>,
 ) -> Result<String, String> {
     let window = main_window(&app)?;
     let mode = IslandMode::from_value(&mode)?;
@@ -92,6 +99,8 @@ pub fn set_island_interaction(
         .map(|height| height.clamp(MIN_COLLAPSED_ISLAND_HEIGHT, MAX_COLLAPSED_ISLAND_HEIGHT))
         .unwrap_or(previous_state.collapsed_height);
     let position_state = IslandWindowState { collapsed_scale, collapsed_height, ..previous_state };
+    let next_is_tucked = is_tucked.unwrap_or(false);
+    let remembered_position = geometry::remember_position_before_tuck(&window, previous_state, next_is_tucked)?;
     let restored_custom_position = previous_state.custom_position.or_else(|| {
         custom_position.filter(|position| {
             monitor_for_island_position(&window, *position, position_state)
@@ -102,8 +111,11 @@ pub fn set_island_interaction(
     });
     let state = mutate_window_state(|state| {
         state.mode = mode;
-        state.is_tucked = is_tucked.unwrap_or(false);
+        state.is_tucked = next_is_tucked;
         state.tuck_style = state::TuckStyle::from_value(tuck_style.as_deref());
+        if let Some(height) = tuck_edge_height.filter(|height| height.is_finite()) {
+            state.tuck_edge_height = height.clamp(MIN_TUCKED_EDGE_HEIGHT, MAX_TUCKED_EDGE_HEIGHT);
+        }
         state.position_locked = position_locked.unwrap_or(false);
         state.collapsed_scale = collapsed_scale;
         state.collapsed_height = collapsed_height;
@@ -121,7 +133,9 @@ pub fn set_island_interaction(
             state.collapsed_width =
                 collapsed_width.clamp(MIN_COLLAPSED_ISLAND_WIDTH, MAX_COLLAPSED_ISLAND_WIDTH);
         }
-        if state.custom_position.is_none() {
+        if state.custom_position == previous_state.custom_position && !state.is_dragging {
+            state.custom_position = remembered_position.or(restored_custom_position);
+        } else if state.custom_position.is_none() {
             state.custom_position = restored_custom_position;
         }
         state.glass_enabled = glass_enabled.unwrap_or(false);
@@ -134,14 +148,25 @@ pub fn set_island_interaction(
         if let Some(corner_radius) = corner_radius {
             state.corner_radius = corner_radius.clamp(MIN_CORNER_RADIUS, MAX_CORNER_RADIUS);
         }
+        if let Some(radius) = collapsed_corner_radius.filter(|radius| radius.is_finite()) {
+            state.collapsed_corner_radius = Some(radius.clamp(MIN_COLLAPSED_CORNER_RADIUS, MAX_COLLAPSED_CORNER_RADIUS));
+        }
         if let Some(corner_shape) = corner_shape.as_deref().and_then(CornerShape::from_value) {
             state.corner_shape = corner_shape;
         }
         if let Some(monitor_follow) = monitor_follow.as_deref().and_then(MonitorFollow::from_value) {
             state.monitor_follow = monitor_follow;
         }
+        // Older front ends send neither: the collapsed size, and clicks as before.
+        state.notice_size = state::notice_size_within_stage(notice_width, notice_height, collapsed_scale);
+        state.click_through = click_through.unwrap_or(false);
         *state
     });
+    if previous_state.custom_position.is_some() && state.custom_position != previous_state.custom_position {
+        if let Some(position) = state.custom_position {
+            let _ = window.emit("island-position-changed", position);
+        }
+    }
     apply_stage_geometry(
         &window,
         state,
@@ -246,7 +271,9 @@ pub fn minimize_island(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn show_ready_island(app: AppHandle) -> Result<(), String> {
-    show_island(&app)
+    // At sign-in the island appears without taking the focus: forcing the foreground there
+    // (AttachThreadInput into whatever is starting up) only fights the desktop and other apps.
+    show_island_window(&app, !crate::system::startup::launched_at_startup())
 }
 
 pub(crate) fn main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
@@ -255,10 +282,16 @@ pub(crate) fn main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
 }
 
 pub(crate) fn show_island(app: &AppHandle) -> Result<(), String> {
+    show_island_window(app, true)
+}
+
+fn show_island_window(app: &AppHandle, focus: bool) -> Result<(), String> {
     let window = main_window(app)?;
     apply_stage_geometry(&window, read_window_state(), false)?;
     window.show().map_err(|error| error.to_string())?;
-    crate::system::window_focus::focus_window(&window)?;
+    if focus {
+        crate::system::window_focus::focus_window(&window)?;
+    }
     if let Ok(hwnd) = window.hwnd() {
         win32::taskbar_edge::raise_topmost(hwnd);
     }
@@ -270,6 +303,12 @@ pub(crate) fn hide_island(app: &AppHandle) {
     if let Ok(window) = main_window(app) {
         let _ = window.hide();
     }
+}
+
+/// Game mode's quiet changed (see `state::set_game_quiet`).
+#[tauri::command]
+pub fn set_island_game_quiet(quiet: bool) {
+    state::set_game_quiet(quiet);
 }
 
 #[tauri::command]
@@ -287,11 +326,15 @@ macro_rules! tauri_commands {
             crate::island::start_island_drag,
             crate::island::reset_island_position,
             crate::island::get_island_top_attachment,
+            crate::island::set_island_game_quiet,
             crate::island::show_ready_island,
             crate::island::minimize_island,
             crate::island::focus::take_island_hover_focus,
             crate::island::focus::release_island_hover_focus,
             crate::island::outside_click::set_island_outside_click_watch,
+            crate::island::glass_capture::start_glass_capture,
+            crate::island::glass_capture::set_glass_capture_region,
+            crate::island::glass_capture::stop_glass_capture,
         ] $($rest)*)
     };
 }

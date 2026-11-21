@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 // @ts-expect-error process is a nodejs global
-const enabledRegressionFeatures = process.env.FOCUSD_REGRESSION_FEATURES === "enabled";
+const enabledRegressionFeatures = process.env.FLY_ISLAND_REGRESSION_FEATURES === "enabled";
 
 // https://vite.dev/config/
 export default defineConfig(async ({ command }) => ({
@@ -14,7 +14,7 @@ export default defineConfig(async ({ command }) => ({
     load(id) {
       // Test fixtures can exercise retained features; production builds always use the file.
       if (command === "serve" && enabledRegressionFeatures && id.split("?")[0].endsWith("/release-features.json")) {
-        return JSON.stringify({ plugins: true, mailOtp: true });
+        return JSON.stringify({ plugins: true, mailOtp: true, pluginMarket: true });
       }
     },
   }],

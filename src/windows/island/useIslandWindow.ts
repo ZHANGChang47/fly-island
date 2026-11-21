@@ -3,9 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DEFAULT_SETTINGS } from "../../features/appearance/settings";
 import type { IslandSettings } from "../../features/appearance/types";
+import { shapedSettings } from "../../features/appearance/islandShape";
 import * as islandApi from "./api";
 import { clearIslandPosition } from "./storage";
+import { setIslandTopEdgeCapsule } from "./topEdge";
 import { useIslandPosition } from "./useIslandPosition";
+import { useGlassCapture } from "./useGlassCapture";
 import { useNativeLayout } from "./useNativeLayout";
 import { useSettingsPositionReset } from "./useSettingsPositionReset";
 import type { IslandMode, NativeGlassState } from "./types";
@@ -18,8 +21,12 @@ type IslandWindowOptions = {
   setSettings: (settings: IslandSettings) => void;
   expandedIslandHeight: number;
   collapsedIslandWidth: number;
+  /** A grown message preview's size, and whether clicks pass through it (useMessageNotice). */
+  notice: IslandNotice;
   onCollapse: () => void;
 };
+
+export type IslandNotice = { width: number | null; height: number | null; clickThrough: boolean };
 
 /** Keeps the native island window (size, position, glass, focus) in sync with the island's state. */
 export function useIslandWindow({
@@ -29,9 +36,12 @@ export function useIslandWindow({
   setSettings,
   expandedIslandHeight,
   collapsedIslandWidth,
+  notice,
   onCollapse,
 }: IslandWindowOptions) {
   const syncNativeLayout = useNativeLayout(settings);
+  // The glass's live backdrop: what is behind the island, blurred (glass_capture.rs).
+  useGlassCapture(isGlass(settings.material), isTucked, settings.glassBlur);
   const { isPositionDetached, setIsPositionDetached, islandPositionRef, startIslandDrag } = useIslandPosition(settings.positionLocked);
   const [nativeGlassState, setNativeGlassState] =
     useState<NativeGlassState>("disabled");
@@ -43,27 +53,35 @@ export function useIslandWindow({
       nextExpandedHeight: number,
       nextCollapsedWidth: number,
       nextIsTucked: boolean,
+      nextNotice: IslandNotice,
     ) => {
+      // The capsule floats below the top edge as a pill (islandShape.ts).
+      const shaped = shapedSettings(nextSettings);
       try {
         const glassState = await islandApi.setIslandInteraction({
           mode: nextMode,
           collapsedScale: nextSettings.collapsedScale,
           expandedScale: nextSettings.expandedScale,
-          marginY: nextSettings.marginY,
+          marginY: shaped.marginY,
           expandedHeight: nextExpandedHeight,
           collapsedWidth: nextCollapsedWidth,
           collapsedHeight: nextSettings.collapsedHeight,
           customPosition: islandPositionRef.current,
           isTucked: nextIsTucked,
           tuckStyle: nextSettings.tuckStyle,
+          tuckEdgeHeight: nextSettings.tuckEdgeHeight,
           positionLocked: nextSettings.positionLocked,
           animatePosition: true,
           glassEnabled: isGlass(nextSettings.material),
           glassIntensity: nextSettings.glassIntensity,
           glassTint: nextSettings.islandBackgroundColor,
           cornerRadius: nextSettings.islandCornerRadius,
+          collapsedCornerRadius: shaped.collapsedCornerRadius,
           cornerShape: nextSettings.islandCornerShape,
           monitorFollow: nextSettings.islandMonitor,
+          noticeWidth: nextNotice.width,
+          noticeHeight: nextNotice.height,
+          clickThrough: nextNotice.clickThrough,
         });
         setNativeGlassState(glassState);
       } catch (error) {
@@ -114,6 +132,7 @@ export function useIslandWindow({
     }
   }, [islandPositionRef, setIsPositionDetached, setSettings, settings, syncNativeLayout]);
   useSettingsPositionReset(resetIslandPosition);
+  useEffect(() => setIslandTopEdgeCapsule(settings.islandShape === "capsule"), [settings.islandShape]);
 
   // One native call at a time, and only the latest state once it returns. An Agent page that
   // opens measures its card row several times in a few frames; sending each height as its own
@@ -127,6 +146,7 @@ export function useIslandWindow({
       expandedIslandHeight,
       collapsedIslandWidth,
       isTucked,
+      notice,
     );
     if (queue.running) return;
     queue.running = true;
@@ -145,10 +165,15 @@ export function useIslandWindow({
   }, [
     expandedIslandHeight,
     collapsedIslandWidth,
+    notice.width,
+    notice.height,
+    notice.clickThrough,
     isTucked,
     mode,
     settings.tuckStyle,
+    settings.tuckEdgeHeight,
     settings.marginY,
+    settings.islandShape,
     settings.material,
     settings.glassIntensity,
     settings.islandBackgroundColor,
@@ -156,6 +181,7 @@ export function useIslandWindow({
     settings.collapsedHeight,
     settings.expandedScale,
     settings.islandCornerRadius,
+    settings.collapsedCornerRadius,
     settings.islandCornerShape,
     settings.islandMonitor,
     settings.positionLocked,

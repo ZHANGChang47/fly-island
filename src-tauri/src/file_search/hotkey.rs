@@ -27,7 +27,7 @@ pub fn init(app: &AppHandle) {
 }
 
 fn run_hotkey_loop() {
-    let class_name = "FocuSDFileSearchHotkey";
+    let class_name = "FlyIslandFileSearchHotkey";
     let instance = match message_window::module_instance() {
         Ok(value) => value,
         Err(error) => {
@@ -42,7 +42,7 @@ fn run_hotkey_loop() {
     let hwnd = match message_window::create_message_only_window(
         instance,
         class_name,
-        "FocuSD File Search Hotkey",
+        "Fly Island File Search Hotkey",
     ) {
         Ok(value) => value,
         Err(error) => {

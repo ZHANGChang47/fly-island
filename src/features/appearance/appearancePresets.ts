@@ -3,9 +3,9 @@ import { APPEARANCE_SETTING_KEYS, normalizeSettings, withAppearanceFrom } from "
 import type { IslandSettings, LegacyIslandSettings } from "./types";
 
 // Whole-look presets: every appearance setting (APPEARANCE_SETTING_KEYS) saved under a name.
-// Stored as focusd-island-appearance-presets; applying one reads it back through normalizeSettings,
+// Stored as fly-island-appearance-presets; applying one reads it back through normalizeSettings,
 // so a damaged or older record falls back to defaults for what it lacks.
-export const APPEARANCE_PRESETS_KEY = "focusd-island-appearance-presets";
+export const APPEARANCE_PRESETS_KEY = "fly-island-appearance-presets";
 export const MAX_APPEARANCE_PRESETS = 8;
 export const APPEARANCE_PRESET_NAME_LIMIT = 20;
 
@@ -47,7 +47,9 @@ export function removeAppearancePreset(presets: AppearancePreset[], id: string):
 
 /** `current` with the preset's appearance applied; every other setting (todo, tuck, agent) is kept. */
 export function applyAppearancePreset(current: IslandSettings, preset: AppearancePreset): IslandSettings {
-  return withAppearanceFrom(current, normalizeSettings(preset.settings as LegacyIslandSettings));
+  // On top of the current settings: what a preset saved before a setting joined the appearance
+  // (the tucked look, 2026-11-19) keeps its current value instead of falling back to the default.
+  return withAppearanceFrom(current, normalizeSettings({ ...current, ...preset.settings } as LegacyIslandSettings));
 }
 
 export function loadAppearancePresets(): AppearancePreset[] {

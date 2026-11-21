@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, type Channel } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
 import type { IslandCornerShape, IslandMonitor, TuckStyle } from "../../features/appearance/types";
@@ -47,6 +47,8 @@ export type IslandInteraction = {
   customPosition: IslandPosition | null;
   isTucked: boolean;
   tuckStyle?: TuckStyle;
+  /** Px of the island the "edge" tuck leaves on screen (island/geometry.rs). */
+  tuckEdgeHeight: number;
   positionLocked: boolean;
   animatePosition: boolean;
   glassEnabled: boolean;
@@ -54,11 +56,38 @@ export type IslandInteraction = {
   glassTint: string;
   /** Expanded bottom corner radius; the native hit test scales its other corners from it. */
   cornerRadius: number;
+  /** The collapsed bar's corner radius; Rust hit-tests it (island/state.rs). */
+  collapsedCornerRadius: number;
   /** The native hit test follows the island's corner shape. */
   cornerShape: IslandCornerShape;
   /** Which monitor the island sits on; Rust moves it there (src-tauri/src/island/follow.rs). */
   monitorFollow: IslandMonitor;
+  /** A message preview grown with its text (noticeLayout.ts), before scale; null keeps the collapsed size. */
+  noticeWidth: number | null;
+  noticeHeight: number | null;
+  /** Game mode shows a preview without taking clicks (Rust lets the cursor through the island). */
+  clickThrough: boolean;
 };
+
+/** 对应 src-tauri/src/island/glass_capture.rs 的 GlassCaptureRegion：岛屿在窗口里的区域，物理像素。 */
+export type GlassCaptureRegion = { left: number; top: number; width: number; height: number };
+
+/**
+ * Starts the glass's live backdrop: frames come to `onFrame` as raw bytes (glassFrame.ts).
+ * False where the island cannot be left out of the capture; the glass stays a tint then.
+ */
+export function startGlassCapture(onFrame: Channel<ArrayBuffer | number[]>) {
+  return invoke<boolean>("start_glass_capture", { onFrame });
+}
+
+/** null pauses the capture (the island tucked away). */
+export function setGlassCaptureRegion(region: GlassCaptureRegion | null, blur: number) {
+  return invoke("set_glass_capture_region", { region, blur });
+}
+
+export function stopGlassCapture() {
+  return invoke("stop_glass_capture");
+}
 
 export function setIslandLayout(layout: IslandLayout) {
   return invoke("set_island_layout", { layout });
@@ -107,6 +136,11 @@ export type ForegroundFullscreen = {
 };
 
 /** The full-screen state at the last native check (every 800 ms). */
+/** Tells the native side game mode's quiet, so a tucked island lets the cursor through over a game. */
+export function setIslandGameQuiet(quiet: boolean) {
+  return invoke("set_island_game_quiet", { quiet });
+}
+
 export function getForegroundFullscreen() {
   return invoke<ForegroundFullscreen>("get_foreground_fullscreen");
 }

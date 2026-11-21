@@ -22,17 +22,21 @@ import { dirname, join, resolve } from "node:path";
 import { BETA_CHANNEL_TAG, isPrerelease, shouldUpdateBetaManifest } from "./channel.mjs";
 import { msiNames, msiVersion } from "./msi-version.mjs";
 import { loadSigningEnvironment } from "./release-signing.mjs";
+import { cargoTargetDir } from "./cargo-target.mjs";
 
 const CONFIG = "src-tauri/tauri.conf.json";
 const OVERLAY = "src-tauri/tauri.release.conf.json";
 const CARGO = "src-tauri/Cargo.toml";
-const RELEASE_DIR = resolve(process.env.CARGO_TARGET_DIR || "src-tauri/target", "release").replaceAll("\\", "/");
+// Pinned for every child (tauri build, make-latest-json, build-plugins.ps1) so they agree on it.
+process.env.CARGO_TARGET_DIR = cargoTargetDir();
+const RELEASE_DIR = resolve(process.env.CARGO_TARGET_DIR, "release").replaceAll("\\", "/");
 const BUNDLE_DIR = `${RELEASE_DIR}/bundle/nsis`;
 const MSI_DIR = `${RELEASE_DIR}/bundle/msi`;
 const MSI_OVERLAY = `${RELEASE_DIR}/msi-version.conf.json`;
 const BETA_CHANNEL_DIR = `${RELEASE_DIR}/beta-channel`;
 const REPO = "flyl1u/fly-island";
 const releaseFeatures = JSON.parse(readFileSync("release-features.json", "utf8"));
+const LEGACY_NAME_PATTERN = /focus[\s_-]?d(?![a-z])/i;
 
 const args = process.argv.slice(2);
 const baseFlag = args.indexOf("--base-url");
@@ -65,6 +69,15 @@ function run(command, commandArgs, options = {}) {
     process.exit(result.status ?? 1);
   }
   return result;
+}
+
+function assertCleanArtifactNames(directory) {
+  const walk = (current) => readdirSync(current, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(current, entry.name);
+    return entry.isDirectory() ? walk(path) : [path];
+  });
+  const bad = walk(directory).filter((path) => LEGACY_NAME_PATTERN.test(path.split(/[\\/]/).pop() ?? ""));
+  if (bad.length) fail(`Release artifacts contain legacy product names:\n${bad.join("\n")}`);
 }
 
 const version = JSON.parse(readFileSync(CONFIG, "utf8")).version;
@@ -121,6 +134,7 @@ if (wixVersion) {
   console.log(`MSI version for ${version}: ${wixVersion}`);
 }
 run("pnpm", ["tauri", "build", "--ci", ...configs, "--bundles", "nsis,msi"]);
+assertCleanArtifactNames(RELEASE_DIR);
 
 const latestArgs = ["scripts/release/make-latest-json.mjs", "--notes-file", notesFile];
 if (baseUrl) latestArgs.push("--base-url", baseUrl);

@@ -20,6 +20,7 @@ pub(super) struct Conversation {
     preview: ChatPreview,
     unread: u32,
     muted: bool,
+    official_account: bool,
     mentioned: bool,
     /// A mention of the user, not one of everyone: only this lets a muted chat through.
     mentions_me: bool,
@@ -30,7 +31,9 @@ pub(super) struct Conversation {
 
 impl Conversation {
     fn can_preview(&self) -> bool {
-        !self.preview.body.is_empty() && (!self.muted || self.mentions_me)
+        !self.official_account
+            && !self.preview.body.is_empty()
+            && (!self.muted || self.mentions_me)
     }
 
     pub(super) fn matches_selected_preview(&self, preview: &ChatPreview) -> bool {
@@ -39,9 +42,57 @@ impl Conversation {
 }
 
 const MUTED: &[&str] = &["消息免打扰", "免打扰", "静音", "Muted", "Do Not Disturb"];
+/// Only muted chats can be folded. The folder's own row carries no muted label, so it counts as
+/// muted here, whether its name heads the row or appears as one of its labels.
+const FOLDED: &[&str] = &["折叠的聊天", "折叠的群聊", "Folded Chats", "Folded chats"];
+/// WeChat's internal name for the folder, which may appear in its row's automation id.
+const FOLDED_KEY: &str = "foldgroup";
 const PINNED: &[&str] = &["已置顶", "置顶聊天", "Pinned"];
+/// Stable automation ids used by WeChat's official-account and notification rows.
+const OFFICIAL_KEYS: &[&str] = &[
+    "brandsessionholder",
+    "brandservicesessionholder",
+    "notifymessage",
+    "officialaccounts",
+];
+/// Names are a fallback for clients that do not expose the internal username in the id.
+const OFFICIAL_NAMES: &[&str] = &[
+    "公众号",
+    "公众号消息",
+    "订阅号",
+    "订阅号消息",
+    "服务号",
+    "服务号消息",
+    "服务通知",
+    "微信支付",
+    "微信运动",
+    "微信团队",
+    "腾讯新闻",
+    "officialaccount",
+    "officialaccounts",
+    "publicaccount",
+    "publicaccounts",
+    "publicaccountmessage",
+    "publicaccountmessages",
+    "publicmessages",
+    "subscriptionaccount",
+    "subscriptionaccounts",
+    "subscriptionaccountmessage",
+    "subscriptionaccountmessages",
+    "subscriptionmessages",
+    "serviceaccount",
+    "serviceaccounts",
+    "serviceaccountmessage",
+    "serviceaccountmessages",
+    "servicenotice",
+    "servicenotification",
+    "servicenotifications",
+    "wechatpay",
+    "wechatsports",
+    "wechatteam",
+    "tencentnews",
+];
 const LABELS: &[&str] = &[
-    "折叠的聊天",
     "有新消息",
     "以下为新消息",
     "服务号",
@@ -65,6 +116,8 @@ pub(super) fn parse_row(
 ) -> Option<Conversation> {
     let mut lines = name.lines().map(str::trim).filter(|line| !line.is_empty());
     let contact = lines.next()?;
+    let folded = FOLDED.contains(&contact) || key.contains(FOLDED_KEY);
+    let official_account = is_official_account(&key, contact);
     let mut row = Conversation {
         preview: ChatPreview {
             key,
@@ -72,7 +125,8 @@ pub(super) fn parse_row(
             body: String::new(),
         },
         unread: 0,
-        muted: false,
+        muted: folded,
+        official_account,
         mentioned: false,
         mentions_me: false,
         selected,
@@ -83,13 +137,21 @@ pub(super) fn parse_row(
     let last_time = labels.iter().rposition(|line| is_time_label(line));
     let mut summary = None;
     for (index, line) in labels.into_iter().enumerate() {
-        if MUTED.contains(&line) {
+        if MUTED.contains(&line) || FOLDED.contains(&line) {
             row.muted = true;
         } else if PINNED.contains(&line) {
             row.pinned = true;
         } else if Some(index) == last_time {
             row.time = line.to_owned();
         } else if last_time.is_none_or(|time| index < time) {
+            // Muted chats put their count in front of the summary: "[28条] 张三: 好".
+            let line = match leading_unread(line) {
+                Some((count, rest)) => {
+                    row.unread = count;
+                    rest
+                }
+                None => line,
+            };
             if let Some(count) = unread_count(line) {
                 row.unread = count;
             } else if LABELS.contains(&line) {
@@ -116,6 +178,27 @@ pub(super) fn parse_row(
         row.preview.body = text.chars().take(512).collect();
     }
     Some(row)
+}
+
+fn is_official_account(key: &str, contact: &str) -> bool {
+    let key = key.trim().to_ascii_lowercase();
+    if key.starts_with("gh_") || OFFICIAL_KEYS.contains(&key.as_str()) {
+        return true;
+    }
+    let contact = contact
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect::<String>()
+        .to_lowercase();
+    OFFICIAL_NAMES.contains(&contact.as_str())
+}
+
+/// A bracketed count followed by the summary on the same line.
+fn leading_unread(line: &str) -> Option<(u32, &str)> {
+    let end = line.strip_prefix('[')?.find(']')? + 2;
+    let rest = line[end..].trim_start();
+    let count = unread_count(&line[..end])?;
+    (!rest.is_empty()).then_some((count, rest))
 }
 
 fn unread_count(line: &str) -> Option<u32> {
@@ -258,8 +341,8 @@ pub(super) fn new_previews(
         .collect()
 }
 
-/// True when only muted chats that did not mention the user changed. A flash that only they
-/// explain is not worth a plain "new reminder".
+/// True when only muted chats that did not mention the user or official-account rows changed. A
+/// flash that only these suppressed rows explain is not worth a plain "new reminder".
 pub(super) fn only_muted_changed(before: &[Conversation], after: &[Conversation]) -> bool {
     let previous: HashMap<_, _> = before
         .iter()
@@ -275,7 +358,7 @@ pub(super) fn only_muted_changed(before: &[Conversation], after: &[Conversation]
         if !changed {
             continue;
         }
-        if row.muted && !row.mentions_me {
+        if row.official_account || (row.muted && !row.mentions_me) {
             muted_changed = true;
         } else {
             return false;
@@ -285,131 +368,5 @@ pub(super) fn only_muted_changed(before: &[Conversation], after: &[Conversation]
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn row(key: &str, name: &str) -> Conversation {
-        parse_row(ListRow {
-            key: key.into(),
-            name: name.into(),
-            selected: false,
-        })
-        .unwrap()
-    }
-
-    #[test]
-    fn parses_a_private_chat_and_retains_a_group_sender() {
-        let dm = row("1", "小林\r\n[2条]\r\n下午开会吗？\r\n12:41");
-        assert_eq!(
-            (
-                dm.preview.contact.as_str(),
-                dm.preview.body.as_str(),
-                dm.unread
-            ),
-            ("小林", "下午开会吗？", 2)
-        );
-        let group = row("2", "项目群\n[3]\n李四: 请看附件\n昨天 18:00\n消息免打扰");
-        assert_eq!(group.preview.body, "李四: 请看附件");
-        assert!(group.muted);
-        assert_eq!(
-            row("3", "Alex\n2 unread messages\nHello\n9:45 AM").unread,
-            2
-        );
-    }
-
-    #[test]
-    fn ignores_own_replies_muted_chats_and_repeated_flashes() {
-        let before = [
-            row("1", "小林\n[2条]\n上午好\n8:15"),
-            row("2", "项目群\n李四: 请看附件\n昨天\n消息免打扰"),
-        ];
-        let after = [
-            row("1", "小林\n[2条]\n我晚点回复\n8:18"),
-            row("2", "项目群\n[2条]\n李四: 有事@我\n8:19\n消息免打扰"),
-        ];
-        assert!(new_previews(&before, &after, ReadTrigger::Poll, 20).is_empty());
-        let mention = [
-            row("1", "小林\n[3条]\n我晚点回复\n8:19"),
-            row(
-                "2",
-                "项目群\n[2条]\n[有人@我] 李四: 请查收\n8:19\n消息免打扰",
-            ),
-        ];
-        assert_eq!(
-            new_previews(&after, &mention, ReadTrigger::Poll, 20).len(),
-            2
-        );
-        assert!(new_previews(&mention, &mention, ReadTrigger::Poll, 20).is_empty());
-    }
-
-    #[test]
-    fn muted_chats_pass_only_a_mention_of_me_and_explain_their_own_flashes() {
-        let rows = |dm: &str, group: &str| {
-            [
-                row("dm", &format!("小林\n{dm}\n8:15")),
-                row("g", &format!("大群\n{group}\n8:16\n消息免打扰")),
-            ]
-        };
-        let before = rows("上午好", "张三: 早");
-        let everyone = rows("上午好", "[@所有人] 群主: 通知");
-        assert!(new_previews(&before, &everyone, ReadTrigger::Poll, 20).is_empty());
-        assert!(only_muted_changed(&before, &everyone));
-        let me = rows("上午好", "[有人@我] 李四: 看下");
-        assert_eq!(new_previews(&everyone, &me, ReadTrigger::Poll, 20).len(), 1);
-        assert!(!only_muted_changed(&everyone, &me));
-        assert!(!only_muted_changed(&everyone, &rows("[1条]\n在吗", "王五: 好")));
-        assert!(!only_muted_changed(&before, &before));
-    }
-
-    #[test]
-    fn selected_chat_needs_a_flash_and_no_visit_to_count_without_unread() {
-        let selected = |name: &str| Conversation {
-            selected: true,
-            ..row("open", name)
-        };
-        let before = [
-            row("other", "其他会话\n上一次\n12:00"),
-            selected("当前会话\n好的\n12:05"),
-        ];
-        let after = [
-            selected("当前会话\n好的\n12:05"),
-            row("other", "其他会话\n上一次\n12:00"),
-        ];
-        assert_eq!(
-            new_previews(
-                &before,
-                &after,
-                ReadTrigger::Flash {
-                    allow_selected: true
-                },
-                20
-            )[0]
-            .key,
-            "open"
-        );
-        assert!(new_previews(
-            &before,
-            &after,
-            ReadTrigger::Flash {
-                allow_selected: false
-            },
-            20
-        )
-        .is_empty());
-        assert!(new_previews(&before, &after, ReadTrigger::Poll, 20).is_empty());
-        assert_eq!(selected("当前会话\n12:06\n12:07").preview.body, "12:06");
-    }
-
-    #[test]
-    fn a_poll_notices_a_new_top_chat_without_replaying_other_old_unread_rows() {
-        let before = [row("known", "现有会话\n上一次\n12:00")];
-        let after = [
-            row("new", "新会话\n[1条]\n收到\n12:05"),
-            row("known", "现有会话\n上一次\n12:00"),
-            row("older", "旧会话\n[3条]\n内容\n昨天"),
-        ];
-        let previews = new_previews(&before, &after, ReadTrigger::Poll, 20);
-        assert_eq!(previews.len(), 1);
-        assert_eq!(previews[0].key, "new");
-    }
-}
+#[path = "conversations_tests.rs"]
+mod tests;

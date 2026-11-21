@@ -100,9 +100,9 @@ test("notch dimensions and text size have independent defaults, bounds and reset
 });
 
 test("quota rings default to all sources and migrate the old session switches once", () => {
-  assert.deepEqual(normalizeSettings({}).agentQuotaSources, ["claudeCode", "codex", "dsh", "workbuddy"]);
-  assert.deepEqual(normalizeSettings({ agentShowDsh: false }).agentQuotaSources, ["claudeCode", "codex", "workbuddy"]);
-  assert.deepEqual(normalizeSettings({ agentShowCodex: false, agentShowClaudeCode: false }).agentQuotaSources, ["dsh", "workbuddy"]);
+  assert.deepEqual(normalizeSettings({}).agentQuotaSources, ["claudeCode", "codex", "dsh", "workbuddy", "kimiCode", "zcode"]);
+  assert.deepEqual(normalizeSettings({ agentShowDsh: false }).agentQuotaSources, ["claudeCode", "codex", "workbuddy", "kimiCode", "zcode"]);
+  assert.deepEqual(normalizeSettings({ agentShowCodex: false, agentShowClaudeCode: false }).agentQuotaSources, ["dsh", "workbuddy", "kimiCode", "zcode"]);
   const optedIn = normalizeSettings({ agentShowDsh: false, agentQuotaSources: ["workbuddy", "dsh", "dsh", "unknown"] });
   assert.deepEqual(optedIn.agentQuotaSources, ["dsh", "workbuddy"]);
   assert.equal(optedIn.agentShowDsh, false);
@@ -114,8 +114,6 @@ test("options no longer in Settings load as their defaults, whatever was saved",
   const saved = {
     marginY: 48,
     islandMonitor: "cursor",
-    islandCornerRadius: 30,
-    islandCornerShape: "round",
     maxPanelHeight: 320,
     pulseBrightness: 140,
     todoBackgroundColor: "#ffeeaa",
@@ -151,6 +149,36 @@ test("options no longer in Settings load as their defaults, whatever was saved",
   };
   const normalized = normalizeSettings(saved);
   for (const key of Object.keys(saved)) assert.deepEqual(normalized[key], DEFAULT_SETTINGS[key], key);
+});
+
+test("the open corner radius and shape are settings again, kept within Rust's range", () => {
+  assert.equal(normalizeSettings({}).islandCornerRadius, 42);
+  assert.equal(normalizeSettings({ islandCornerRadius: 30 }).islandCornerRadius, 30);
+  assert.equal(normalizeSettings({ islandCornerRadius: 99 }).islandCornerRadius, 96);
+  assert.equal(normalizeSettings({ islandCornerRadius: "x" }).islandCornerRadius, 42);
+  assert.equal(normalizeSettings({ islandCornerShape: "round" }).islandCornerShape, "round");
+  assert.equal(normalizeSettings({ islandCornerShape: "oval" }).islandCornerShape, "squircle");
+});
+
+test("the collapsed corners are a setting of their own; older settings keep the 12 / 30 ratio", () => {
+  assert.equal(normalizeSettings({}).collapsedCornerRadius, 16.8);
+  assert.equal(DEFAULT_SETTINGS.collapsedCornerRadius, 16.8);
+  assert.equal(normalizeSettings({ islandCornerRadius: 30 }).collapsedCornerRadius, 12);
+  assert.equal(normalizeSettings({ islandCornerRadius: 30, collapsedCornerRadius: 9 }).collapsedCornerRadius, 9);
+  assert.equal(normalizeSettings({ collapsedCornerRadius: 99 }).collapsedCornerRadius, 40);
+  assert.equal(normalizeSettings({ islandCornerRadius: 48, collapsedCornerRadius: 6 }).islandCornerRadius, 48);
+});
+
+test("glass blur, the edge tuck strip and closing the clipboard on blur keep their defaults for older settings", () => {
+  const older = normalizeSettings({});
+  assert.equal(older.glassBlur, 60);
+  assert.equal(older.tuckEdgeHeight, 10);
+  assert.equal(older.clipboardCloseOnBlur, false);
+  assert.equal(normalizeSettings({ glassBlur: 150 }).glassBlur, 100);
+  assert.equal(normalizeSettings({ glassBlur: 0 }).glassBlur, 30);
+  assert.equal(normalizeSettings({ tuckEdgeHeight: 1 }).tuckEdgeHeight, 3);
+  assert.equal(normalizeSettings({ clipboardCloseOnBlur: "yes" }).clipboardCloseOnBlur, false);
+  assert.equal(normalizeSettings({ clipboardCloseOnBlur: true }).clipboardCloseOnBlur, true);
 });
 
 test("the options still in Settings are read back and fall back for older settings", () => {

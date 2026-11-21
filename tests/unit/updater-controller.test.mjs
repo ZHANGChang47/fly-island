@@ -13,6 +13,8 @@ const apiSource = transpile("../../src/features/updater/api.ts");
 const scheduleSource = transpile("../../src/features/updater/autoUpdateSchedule.ts");
 const schedule = {};
 runInNewContext(scheduleSource, { exports: schedule });
+const channel = {};
+runInNewContext(transpile("../../src/features/updater/updateChannel.ts"), { exports: channel });
 
 class Channel {
   onmessage = () => {};
@@ -28,6 +30,7 @@ async function controller({
   version = "0.2.11",
   windowKind = null,
   autoUpdate = true,
+  autostart = false,
   proxies = [],
 } = {}) {
   const exports = {};
@@ -48,6 +51,7 @@ async function controller({
         calls.push(command);
         const send = (event) => args.onEvent.onmessage(event);
         if (command === "updater_configured") return configured;
+        if (command === "is_autostart_launch") return autostart;
         if (command === "get_updater_proxy") return proxies.shift() ?? null;
         if (command === "updater_check") {
           proxiesSeen.push(args.proxy);
@@ -60,13 +64,14 @@ async function controller({
     },
     "@tauri-apps/api/event": {
       listen: async (name, callback) => {
-        if (name === "focusd-update-request") requestListeners.push(callback);
+        if (name === "fly-island-update-request") requestListeners.push(callback);
         return () => {};
       },
       emit: async (name, payload) => emitted.push({ name, payload }),
       emitTo: async (target, name, payload) => emitted.push({ target, name, payload }),
     },
   };
+  mocks["./updateChannel.ts"] = channel;
   const api = {};
   runInNewContext(apiSource, { exports: api, require: (name) => mocks[name] });
   mocks["./api"] = api;
@@ -108,10 +113,10 @@ async function controller({
   return Object.assign(exports, { calls, emitted, saved, proxiesSeen, pendingDelays, fireTimer, request });
 }
 
-test("startup checks the stable channel and downloads without installing", async () => {
+test("startup checks the running version's channel and downloads without installing", async () => {
   const seen = [];
   const updater = await controller({
-    // A pre-release build (someone who picked beta before the choice was removed) checks stable too.
+    // A beta keeps getting betas (and stable releases, which the beta manifest falls back to).
     version: "0.3.0-beta.1",
     check: async (args) => {
       seen.push(args.channel);
@@ -123,12 +128,20 @@ test("startup checks the stable channel and downloads without installing", async
       send({ event: "Finished" });
     },
   });
-  assert.deepEqual(seen, ["stable"]);
+  assert.deepEqual(seen, ["beta"]);
   const state = updater.getUpdateState();
   assert.equal(state.stage, "ready");
   assert.equal(state.nextVersion, "0.3.0");
   assert.equal(state.downloaded, 10);
   assert.ok(!updater.calls.includes("updater_install"), "nothing installs until the user agrees");
+});
+
+test("autostart waits for startup services before its first update check", async () => {
+  const updater = await controller({ autostart: true });
+  assert.ok(!updater.calls.includes("updater_check"));
+  assert.deepEqual(updater.pendingDelays(), [schedule.AUTOSTART_CHECK_DELAY_MS]);
+  await updater.fireTimer();
+  assert.equal(updater.calls.filter((command) => command === "updater_check").length, 1);
 });
 
 test("installing a downloaded update goes straight to the installer", async () => {
@@ -259,4 +272,50 @@ test("a failed background download keeps offering the update and retries soon", 
   assert.equal(state.stage, "available", "the todo stays; its button downloads again");
   assert.match(state.detail, /github unreachable/);
   assert.deepEqual(updater.pendingDelays(), [schedule.RETRY_DELAYS_MS[0]]);
+});
+
+test("a stable user gets a beta only on request, and it downloads like any update", async () => {
+  const seen = [];
+  const updater = await controller({
+    version: "3.2.6",
+    check: async (args) => {
+      seen.push(`${args.channel}:${args.allowDowngrade}`);
+      return args.channel === "beta" ? { version: "3.2.7-beta.1", body: null } : null;
+    },
+  });
+  assert.equal(updater.getUpdateState().stage, "latest", "the regular check never offers the beta");
+  await updater.switchChannel("beta");
+  const state = updater.getUpdateState();
+  assert.deepEqual(seen, ["stable:false", "beta:false"]);
+  assert.equal(state.stage, "ready");
+  assert.equal(state.nextVersion, "3.2.7-beta.1");
+  assert.equal(state.target, "beta");
+});
+
+test("without a newer beta the check says so; a beta user restores the latest stable release", async () => {
+  const none = await controller({ version: "3.2.6", check: async () => null });
+  await none.switchChannel("beta");
+  assert.equal(none.getUpdateState().stage, "latest");
+  assert.equal(none.getUpdateState().target, "beta");
+
+  const seen = [];
+  const beta = await controller({
+    version: "3.2.7-beta.1",
+    check: async (args) => {
+      seen.push(`${args.channel}:${args.allowDowngrade}`);
+      return args.allowDowngrade ? { version: "3.2.6", body: null } : null;
+    },
+  });
+  await beta.switchChannel("restore");
+  assert.deepEqual(seen, ["beta:false", "stable:true"]);
+  assert.equal(beta.getUpdateState().stage, "ready");
+  assert.equal(beta.getUpdateState().nextVersion, "3.2.6");
+});
+
+test("the settings window forwards the beta and restore buttons to the main window", async () => {
+  const updater = await controller({ windowKind: "settings" });
+  await updater.switchChannel("beta");
+  await updater.switchChannel("restore");
+  const forwarded = updater.emitted.filter((event) => event.target === "main").map((event) => event.payload.action);
+  assert.deepEqual(forwarded.slice(-2), ["beta", "restore"]);
 });

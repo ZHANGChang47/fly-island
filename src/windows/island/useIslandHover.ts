@@ -5,6 +5,7 @@ import { useHoverFocus } from "./useHoverFocus";
 import type { useIslandNavigation } from "./useIslandNavigation";
 import { usePanelPreview } from "./usePanelPreview";
 import { useTuckedHoverOpen } from "./useTuckedHoverOpen";
+import { tuckedHoverOpensPanel } from "./tuckedHover";
 import type { IslandPage } from "./types";
 import { useIslandPickerOpen } from "../../lib/islandPicker";
 
@@ -35,21 +36,25 @@ export function useIslandHover({ settings, navigation, quiet, hasMessagePreview,
     pickerOpen,
     collapseDelayMs: settings.hoverCollapseDelayMs,
     mode,
-    // A peeking island opens on a click only; hovering it just keeps it out.
-    isTucked: isTucked || isPeeking,
+    // A tucked island under the cursor is opened by useTuckedHoverOpen below (slide out, then
+    // the panel, one step), so useHoverExpand disarms on the slide-out and does not open it a
+    // second time; a cursor that leaves and comes back opens it as usual. Treating
+    // a peeking island as still tucked left hover-open dead after the first tuck until a click.
+    isTucked,
     onExpand: openCurrentPage,
     onCollapse: collapseIsland,
   });
   const hoverTucked = useTuckedHoverOpen({
-    opensPanel: settings.tuckedHoverAction === "expand" && !quiet,
+    opensPanel: tuckedHoverOpensPanel(settings.expandTrigger, quiet),
     delayMs: settings.hoverExpandDelayMs,
     isPeeking: isPeeking && mode === "collapsed",
     onPeek: peekIsland,
     onOpen: openCurrentPage,
+    blocked: quiet,
     retractsAfterPeek,
     resumePeek,
   });
-  useHoverFocus(mode, quiet, pickerOpen);
+  useHoverFocus(mode, quiet, pickerOpen, settings.hoverCollapseDelayMs);
   usePanelPreview({ navigation, quiet, hasMessagePreview });
   return hoverTucked;
 }

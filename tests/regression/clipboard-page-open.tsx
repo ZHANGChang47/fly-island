@@ -14,11 +14,11 @@ import { installDemoMocks } from "../../web-demo/mocks";
 Object.assign(globalThis, { isTauri: true, IS_REACT_ACT_ENVIRONMENT: true });
 const automated = new URLSearchParams(location.search).has("test");
 for (const key of Object.keys(localStorage)) {
-  if (key.startsWith("focusd-island-")) localStorage.removeItem(key);
+  if (key.startsWith("fly-island-")) localStorage.removeItem(key);
 }
 localStorage.setItem(LOCALE_STORAGE_KEY, "zh-CN");
-localStorage.setItem("focusd-island-last-page", "todo");
-localStorage.setItem("focusd-island-settings", JSON.stringify({ clipboardDetached: true }));
+localStorage.setItem("fly-island-last-page", "todo");
+localStorage.setItem("fly-island-settings", JSON.stringify({ clipboardDetached: true }));
 installDemoMocks(demoData.zh);
 
 type TauriInternals = { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> };

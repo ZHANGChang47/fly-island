@@ -52,7 +52,7 @@ const ALL = [
   entry("pdf", "2026 第三季度经营分析报告（终版）.pdf", { pinned: true }),
   entry("photo", "IMG_20261108_183522.jpg", { size: 3_912_004 }),
   entry("folder", "项目资料", { isDir: true, size: 0 }),
-  entry("app", "FocuSD-Island-Setup-3.0.0.exe", { size: 9_813_000 }),
+  entry("app", "Fly Island-Island-Setup-3.0.0.exe", { size: 9_813_000 }),
   entry("long", "一个名字特别特别长的文件用来看看会不会把面板撑宽或者挤掉右边的按钮.docx", { size: 48_200 }),
   entry("sheet", "预算.xlsx", { size: 23_100 }),
   entry("shot", "截图 2026-11-10 093012.png", { size: 812_330 }),
@@ -84,7 +84,7 @@ function ShelfDragHarness() {
   return <FileShelfPanel shelf={shelf} isDropTarget={false} revealOnDoubleClick={false} />;
 }
 // The page's height in the island (getShelfExpandedHeight) less the island's own chrome.
-const fixtureHeight = (count: number) => (count === 0 ? 158 : (count <= 4 ? 118 : Math.min(5, Math.ceil(count / 2)) * 50 - 6) + 58);
+const fixtureHeight = (count: number) => (count === 0 ? 158 : count <= 4 ? 140 : Math.min(5, Math.ceil(count / 2)) * 50 - 6 + 58);
 
 async function render(items: FileShelfItem[], isDropTarget = false) {
   fixture.style.height = `${fixtureHeight(items.length)}px`;
@@ -130,8 +130,12 @@ if (viewCount !== null) {
     // No title row and nothing framed inside the panel: files, the slot and the line sit on it.
     const framed = [...document.querySelectorAll<HTMLElement>(".shelf-item, .shelf-slot")]
       .filter((element) => getComputedStyle(element).borderStyle !== "none" || getComputedStyle(element).backgroundColor !== "rgba(0, 0, 0, 0)");
-    check(!document.querySelector(".shelf-panel__header, .shelf-panel__title") && framed.length === 0 && document.querySelector(".shelf-bar .shelf-clear-button"),
-      "没有标题行，面板里没有套框，清空按钮在底下那一行");
+    const clear = document.querySelector<HTMLElement>(".shelf-bar--floating .shelf-clear-button");
+    const panelBox = document.querySelector<HTMLElement>(".shelf-panel")!.getBoundingClientRect();
+    const tileBottom = Math.max(...tiles.map((tile) => tile.getBoundingClientRect().bottom));
+    check(!document.querySelector(".shelf-panel__header, .shelf-panel__title") && framed.length === 0 && clear
+      && Math.abs(panelBox.bottom - tileBottom - 10) < 1.5 && clear.getBoundingClientRect().bottom <= panelBox.bottom,
+      "没有标题行，面板里没有套框；一排图块下面不空出一行，清空按钮浮在右下角");
 
     // Twelve files: two columns of rows; long names keep the extension and stay in their row.
     await render(ALL);
@@ -148,7 +152,7 @@ if (viewCount !== null) {
     check(iconRequests.some((request) => request.id === "gone" && !request.available) && iconRequests.some((request) => request.id === "pdf" && request.available),
       "已失效的条目只按类型取图标，不去读文件");
     check(document.querySelector(".shelf-search") && getComputedStyle(actions("long")).display === "none", "文件多时出现搜索框，行上的按钮平时不占地方");
-    check(item("app").querySelector<HTMLElement>(".shelf-item__main")!.title === "D:\\Shelf\\FocuSD-Island-Setup-3.0.0.exe", "指向时显示完整路径");
+    check(item("app").querySelector<HTMLElement>(".shelf-item__main")!.title === "D:\\Shelf\\Fly Island-Island-Setup-3.0.0.exe", "指向时显示完整路径");
 
     // Files dragged over: the shelf steps back under one drop zone.
     await render(ALL.slice(0, 3), true);

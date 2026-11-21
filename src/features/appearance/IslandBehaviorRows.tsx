@@ -3,9 +3,10 @@ import { SettingsChoice } from "../../components/settings/SettingsChoice";
 import { SettingsLinkButton } from "../../components/settings/SettingsLinkButton";
 import { SettingsRow } from "../../components/settings/SettingsRow";
 import { SettingsNumberRow } from "../../components/settings/SettingsNumberRow";
+import { SettingsSliderRow } from "../../components/settings/SettingsSliderRow";
 import { SettingsToggleRow } from "../../components/settings/SettingsToggleRow";
-import { AUTO_COLLAPSE_SECONDS, TUCK_DELAY_SECONDS } from "./settingsLimits";
-import type { ExpandTrigger, IslandSettings, TuckStyle } from "./types";
+import { AUTO_COLLAPSE_SECONDS, GAME_NOTICE_SECONDS, TUCK_DELAY_SECONDS } from "./settingsLimits";
+import type { ExpandTrigger, IslandSettings } from "./types";
 
 type RowsProps = {
   settings: IslandSettings;
@@ -42,19 +43,24 @@ export function ExpandRows({ settings, onSettingsChange }: RowsProps) {
         unit={expand.secondsUnit}
         onChange={(autoCollapseSeconds) => update({ autoCollapseSeconds })}
       />
+      <SettingsToggleRow
+        title={expand.ctrlWheel}
+        description={expand.ctrlWheelHint}
+        checked={settings.ctrlWheelPages}
+        onChange={(ctrlWheelPages) => update({ ctrlWheelPages })}
+      />
     </>
   );
 }
 
-/** Whether and (B) how soon the collapsed island tucks to the top edge, and how it looks there. */
-export function TuckRows({ settings, onSettingsChange, onPreviewTuck }: RowsProps & { onPreviewTuck?: () => void }) {
+/**
+ * Whether and (B) how soon the collapsed island tucks to the top edge. How it looks tucked is on
+ * the appearance page (TuckLookRows.tsx, 2026-11-19).
+ */
+export function TuckRows({ settings, onSettingsChange }: RowsProps) {
   const t = useTranslation();
   const expand = t.settings.expand;
   const update = (patch: Partial<IslandSettings>) => onSettingsChange({ ...settings, ...patch });
-  const tuckStyles: { value: TuckStyle; label: string }[] = (["edge", "line", "hidden"] as const).map((value) => ({
-    value,
-    label: expand.tuckStyles[value],
-  }));
   return (
     <>
       <SettingsToggleRow
@@ -75,32 +81,31 @@ export function TuckRows({ settings, onSettingsChange, onPreviewTuck }: RowsProp
           onChange={(tuckDelaySeconds) => update({ tuckDelaySeconds })}
         />
       ) : null}
-      {/* Clicking "tuck to the top" tucks it too, so the look is offered with auto-tuck off. */}
-      <SettingsRow
-        title={expand.tuckStyle}
-        control={
-          <SettingsChoice
-            value={settings.tuckStyle}
-            options={tuckStyles}
-            ariaLabel={expand.tuckStyle}
-            onChange={(tuckStyle) => { update({ tuckStyle }); onPreviewTuck?.(); }}
-          />
-        }
-      />
     </>
   );
 }
 
 /** Game mode: a full-screen game, video or slideshow in front keeps the island quiet. */
 export function GameModeRow({ settings, onSettingsChange }: RowsProps) {
-  const layout = useTranslation().settings.layout;
+  const t = useTranslation();
+  const layout = t.settings.layout;
+  const labels = t.settings.messageSources;
   return (
+    <>
     <SettingsToggleRow
       title={layout.gameQuiet}
       description={layout.gameQuietHint}
       checked={settings.gameDoNotDisturb}
       onChange={(gameDoNotDisturb) => onSettingsChange({ ...settings, gameDoNotDisturb })}
     />
+    {/* Notices in game mode only matter while it is on (noticeRules.ts), so they hang under it. */}
+    {settings.gameDoNotDisturb && <SettingsToggleRow indent title={labels.gameNotices} description={labels.gameNoticesHint} checked={settings.gameShowNotices}
+      onChange={(gameShowNotices) => onSettingsChange({ ...settings, gameShowNotices })} />}
+    {settings.gameDoNotDisturb && settings.gameShowNotices && <SettingsSliderRow indent title={labels.gameNoticeSeconds} value={settings.gameNoticeSeconds}
+      min={GAME_NOTICE_SECONDS.min} max={GAME_NOTICE_SECONDS.max} step={GAME_NOTICE_SECONDS.step}
+      format={(value) => `${value} ${t.settings.expand.secondsUnit}`} defaultValue={GAME_NOTICE_SECONDS.default}
+      resetLabel={layout.resetToDefault} onChange={(gameNoticeSeconds) => onSettingsChange({ ...settings, gameNoticeSeconds })} />}
+    </>
   );
 }
 

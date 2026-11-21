@@ -1,33 +1,168 @@
 /*
  * The glass materials (Appearance → Style → Material). Their variables come from glassStyle.ts.
- * All three are drawn in CSS only and nothing here blurs: backdrop-filter has nothing to blur over
- * the transparent island window, and a blur filter on layers that resize on every frame of the island's
- * spring would cost the motion. Each glass works in both tones ([data-tone], from the island colour):
- * the lit edges stay white, the shadows and the text halo follow the tone. Light glass takes the
- * light palette whatever the chosen scheme, so its ink is dark; the aurora layer is an opt-in
- * background wash lit under the glass (IslandShell's .island__aurora), never a second blur pass.
+ * backdrop-filter has nothing to blur over the transparent island window, so the blur is done in
+ * Rust from Desktop Duplication (island/glass_capture.rs) and drawn on a still canvas under the
+ * pane (.island__glass-backdrop, useGlassCapture.ts) that the island only clips as it resizes.
+ * Without frames (paused, unsupported) the pane is a tint over a clear window.
+ *
+ * Nothing that costs to paint resizes with the island's spring (2026-11, docs/investigations/
+ * glass-material-backdrop.md): the drop shadow is a fixed-size layer scaled with a transform in
+ * step with the shape (.island__glass-shadow), the backdrop and its grain sit on the still layer,
+ * and the rim uses unblurred inset lines and a gradient instead of a blurred inset glow.
+ * Each glass works in both tones ([data-tone], from the island colour): the lit edges stay white,
+ * the shadows and the text halo follow the tone.
  */
 
-.island:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass) {
+.island:is(.island--material-liquidGlass, .island--material-frostedGlass) {
   /* One small noise tile, rasterized once and repeated: the pane reads as glass, not a flat colour. */
   --glass-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23n)'/%3E%3C/svg%3E");
   /* The glass draws its own rim. */
   --island-rim: transparent;
   isolation: isolate;
-  background:
+  --island-material-fill:
     linear-gradient(180deg, rgba(255, 255, 255, var(--glass-sheen-alpha)), transparent 46%),
     var(--glass-tint-color);
-  box-shadow: 0 18px 46px rgba(0, 0, 0, calc(var(--glass-shadow-alpha) - var(--is-light) * 0.08));
+  /* The shadow is .island__glass-shadow, which does not repaint as the shape moves. */
+  box-shadow: none;
 }
 
-:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass).island--collapsed {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, var(--glass-sheen-alpha)), transparent 70%),
-    var(--glass-collapsed-tint-color);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, calc(0.16 - var(--is-light) * 0.06));
+/* Collapsed and open share one fill, so closing never swaps the background mid-spring. */
+:is(.island--material-liquidGlass, .island--material-frostedGlass).island--collapsed {
+  box-shadow: none;
 }
 
-:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass).island--collapsed:has(:focus-visible) {
+/*
+ * The drop shadow: a box the size of the open island, scaled down to the collapsed bar with a
+ * transform. The transform runs on the shape's own curve and duration, so it keeps step with the
+ * width and height (both are linear in the same eased progress), and the compositor plays it
+ * without painting the 46px blur again on every frame. A box shadow draws only outside its box,
+ * so it never dims what shows through the pane.
+ */
+.island__glass-shadow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: calc(560px * var(--island-expanded-scale));
+  height: calc(var(--expanded-island-height, 306px) * var(--island-expanded-scale));
+  border-radius: 0 0 var(--island-shape-radius) var(--island-shape-radius);
+  corner-shape: var(--island-corner-shape, round);
+  /* Short: a 46px blur ran past the bottom of the window under a tall page and was cut off there in
+     a hard line (2026-11-18, owner). Pulled in at the sides (the negative spread) so it falls only
+     below the pane: around the sides it read as a faint second border (2026-11-18, owner). */
+  box-shadow: 0 12px 20px -10px rgba(0, 0, 0, calc(var(--glass-shadow-alpha) + 0.06 - var(--is-light) * 0.08));
+  pointer-events: none;
+  opacity: 0.85;
+  transform-origin: top center;
+  transform: translateX(-50%) scale(var(--glass-shadow-collapsed-scale, 0.6, 0.12));
+  transition:
+    transform var(--island-motion-duration) var(--island-motion),
+    opacity var(--island-motion-duration) ease;
+}
+
+.island--expanded > .island__glass-shadow {
+  opacity: 1;
+  transform: translateX(-50%);
+  /* Darkens with the page fading in, not under the empty pane. The height follows a page switch on
+     the shape's own spring: jumping to the new height at once left the shadow hanging below a
+     shape still growing, or across one still shrinking, for the 560ms in between (2026-11-19,
+     owner: 展开下方断层的阴影). Only while open: opening and closing keep the height as it is. */
+  transition:
+    transform var(--island-motion-duration) var(--island-motion),
+    height var(--island-motion-duration) var(--island-motion),
+    opacity var(--island-panel-open-fade-duration) ease-out var(--island-panel-open-fade-delay);
+}
+
+.island--detached > .island__glass-shadow {
+  border-radius: var(--island-shape-radius);
+}
+
+/* A message grown past the collapsed bar: the shadow is scaled to the bar, so it would sit inside
+   the larger shape and show only as a dark smudge at its bottom. */
+.island--tucked > .island__glass-shadow,
+.island--notice > .island__glass-shadow {
+  opacity: 0;
+}
+
+/*
+ * The live backdrop (useGlassCapture.ts, island/glass_capture.rs): what is behind the island,
+ * blurred, on a canvas fixed to the window rather than to the island. "50% - 50vw" is the window's
+ * left edge seen from the centred island (50% is the island's current half width), so as the
+ * shape grows and shrinks the picture stays put and is only clipped. The tint, the frosted wash
+ * and the grain lie over it in the same still box.
+ */
+.island__glass-backdrop {
+  display: none;
+}
+
+:root[data-glass-backdrop] .island__glass-backdrop {
+  position: absolute;
+  top: var(--glass-frame-y, 0px);
+  left: calc(50% - 50vw + var(--glass-frame-x, 0px));
+  display: block;
+  width: var(--glass-frame-width, 100vw);
+  height: var(--glass-frame-height, 100vh);
+  pointer-events: none;
+}
+
+/* Its own layer while the island opens or closes (data-moving, useMotionLayer.ts): inside the
+   moving clip, the window-sized tint, veil and grain were painted again on every frame, which
+   halved the frame rate while opening (2026-11-19, owner: 展开收起卡卡的; measure-island-motion.mjs,
+   median frame 33 → 16.7ms). Not kept: text over a layer of its own loses subpixel antialiasing. */
+.island[data-moving] .island__glass-backdrop {
+  will-change: transform;
+}
+
+.island__glass-backdrop canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.island__glass-backdrop::before,
+.island__glass-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+/*
+ * The contrast veil: the island's own colour, deeper the more the backdrop works against the text
+ * (useGlassCapture.ts measures it). White text in the dark tone over a white web page, or dark text
+ * in the light tone over a dark wallpaper, had too little contrast to read (2026-11-18, owner).
+ * Nothing is added while the backdrop already contrasts with the text.
+ */
+.island__glass-backdrop {
+  --glass-contrast: calc(
+    (1 - var(--is-light)) * clamp(0, (var(--glass-backdrop-luma, 0) - 0.22) * 0.9, 0.62)
+    + var(--is-light) * clamp(0, (0.78 - var(--glass-backdrop-luma, 1)) * 0.9, 0.58)
+  );
+}
+
+.island__glass-backdrop::before {
+  background-image:
+    linear-gradient(var(--glass-backdrop-wash, transparent), var(--glass-backdrop-wash, transparent)),
+    linear-gradient(
+      color-mix(in srgb, var(--island-background-color) calc(var(--glass-contrast) * 100%), transparent),
+      color-mix(in srgb, var(--island-background-color) calc(var(--glass-contrast) * 100%), transparent)
+    ),
+    linear-gradient(var(--glass-backdrop-tint-color), var(--glass-backdrop-tint-color));
+}
+
+.island__glass-backdrop::after {
+  background-image: var(--glass-grain);
+  background-size: 128px;
+  opacity: var(--glass-grain-opacity);
+}
+
+:root[data-glass-backdrop] .island__glass::after {
+  display: none;
+}
+
+/* With a backdrop the pane keeps its own tint underneath it: the opaque canvas hides it, but
+   wherever the frame does not reach yet (the window just grew) the pane still reads as glass
+   instead of a bare rim round the desktop (2026-11-19, owner). */
+
+:is(.island--material-liquidGlass, .island--material-frostedGlass).island--collapsed:has(:focus-visible) {
   box-shadow:
     inset 0 -1px 0 rgba(255, 255, 255, 0.5),
     inset 0 0 18px var(--color-white-a10),
@@ -35,28 +170,33 @@
 }
 
 /*
- * The pane is nearly clear, so text on it gets a halo of the opposite tone to stay readable over
- * whatever is behind the island.
+ * No text halo: a 2px shadow under every glyph read as blurred text on both glasses (2026-11-18,
+ * owner). Readability over a busy desktop comes from the tint, the contrast veil above and text a
+ * step stronger than on the opaque island: the muted levels faded into the backdrop.
  */
-.island--material-liquidGlass {
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.42);
+.island:is(.island--material-liquidGlass, .island--material-frostedGlass) {
+  --text-1-alpha: 1;
+  --text-2-alpha: 0.86;
+  --text-3-alpha: 0.74;
+  --text-placeholder-alpha: 0.62;
+  --text-1: rgba(var(--ink-rgb), var(--text-1-alpha));
+  --text-2: rgba(var(--ink-rgb), var(--text-2-alpha));
+  --text-3: rgba(var(--ink-rgb), var(--text-3-alpha));
+  --text-placeholder: rgba(var(--ink-rgb), var(--text-placeholder-alpha));
 }
 
-[data-tone="light"] .island--material-liquidGlass {
-  text-shadow: 0 0 3px rgba(255, 255, 255, 0.8);
+.island:is(.island--material-liquidGlass, .island--material-frostedGlass) .island__content {
+  --color-text-muted: rgba(var(--page-ink-rgb), 0.86);
+  --color-text-subtle: rgba(var(--page-ink-rgb), 0.72);
 }
 
-/* A light pane carries dark ink: a pale halo lifts it off a bright desktop without a blur. */
-.island--material-lightGlass {
-  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.5);
-}
-
-:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass) .island__glass {
+:is(.island--material-liquidGlass, .island--material-frostedGlass) .island__glass {
   position: absolute;
   inset: 0;
   z-index: 1;
   display: block;
-  overflow: hidden;
+  /* No clip of its own: .island__surface already clips to the shape, and a second clip to the
+     smooth (superellipse) corner is a path clip, redrawn on every frame of the spring. */
   border-radius: inherit;
   corner-shape: var(--island-corner-shape, round);
   pointer-events: none;
@@ -71,7 +211,8 @@
   pointer-events: none;
 }
 
-.island__glass::after {
+.island__glass::after,
+.island__material--glass::after {
   inset: 0;
   background-image: var(--glass-grain);
   background-size: 128px;
@@ -79,7 +220,7 @@
 }
 
 /* Light where the pointer is, as if the pane caught it: a gradient, not a blurred circle. */
-.island:is(.island--material-liquidGlass, .island--material-lightGlass) .island__glass::before {
+.island--material-liquidGlass .island__glass::before {
   inset: 0;
   background: radial-gradient(
     circle at var(--glass-pointer-x) var(--glass-pointer-y),
@@ -97,23 +238,30 @@
   inset: 0;
   border-radius: inherit;
   corner-shape: var(--island-corner-shape, round);
+  /* Unblurred: blurring an inset shadow round a smooth corner is a blurred path, the costliest thing
+     the spring had to repaint, and half a pixel of blur did not show. */
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, var(--glass-border-alpha)),
-    inset 0 1.5px 0.5px rgba(255, 255, 255, var(--glass-inset-alpha)),
-    inset 0 -1px 0.5px rgba(255, 255, 255, calc(var(--glass-border-alpha) * 0.7)),
-    inset 0 0 0 2px rgba(0, 0, 0, calc(0.12 - var(--is-light) * 0.05)),
-    inset 0 0 16px 2px rgba(255, 255, 255, var(--glass-inner-glow-alpha));
+    inset 0 1.5px 0 rgba(255, 255, 255, var(--glass-inset-alpha)),
+    inset 0 -1px 0 rgba(255, 255, 255, calc(var(--glass-border-alpha) * 0.7)),
+    inset 0 0 0 2px rgba(0, 0, 0, calc(0.12 - var(--is-light) * 0.05));
 }
 
-/* Light glass replaces the dark inner hairline with a cyan one: a white rim alone vanishes on a
-   pale wallpaper, the cool line is what gives the pane its thickness. */
-.island--material-lightGlass .island__glass-refraction {
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, calc(var(--glass-border-alpha) + 0.14)),
-    inset 0 1.5px 0.5px rgba(255, 255, 255, var(--glass-inset-alpha)),
-    inset 0 -1px 0.5px rgba(255, 255, 255, 0.6),
-    inset 0 0 0 2px rgba(0, 113, 184, var(--glass-inner-line-alpha)),
-    inset 0 0 16px 2px rgba(255, 255, 255, var(--glass-inner-glow-alpha));
+/* The lens edge: light gathering where the glass thickens, as gradients rather than a blurred
+   inset shadow, which repainted a 16px blur around the whole shape on every frame. */
+.island__glass-refraction::before,
+.island__material--glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(130% 120% at 50% 0%, transparent 58%, rgba(255, 255, 255, var(--glass-inner-glow-alpha)) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, calc(var(--glass-inner-glow-alpha) * 1.4)), transparent 18%);
+}
+
+.island__material--glass::before {
+  content: var(--glass-shouldered-lens, none);
+  z-index: 1;
 }
 
 /* A short specular streak along the top edge, following the pointer. */
@@ -128,21 +276,34 @@
   transform: translateX(-50%);
 }
 
-/* Opening lights the rim up from dim: opacity only, which the compositor plays. */
-.island--clear-glass.island--expanded .island__glass-refraction {
-  animation: glassRimBloom 440ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+/*
+ * The rim, its lens glow and the pointer light wait while the island opens or closes
+ * (data-moving, useMotionLayer.ts) and fade in once the shape has settled. Drawn from the start, a
+ * bright outline ran round the empty pane while it grew (2026-11-18, owner); drawn during the
+ * spring at all, its inset lines round the smooth corners were painted again on every frame, the
+ * largest cost left in the glass's motion (2026-11-19, owner: 展开收起卡卡的; dropped frames while
+ * opening 5.8 → 1.9 per run with --gpu). Hidden is not painted; the fade is opacity only.
+ */
+.island--material-liquidGlass .island__glass-refraction,
+.island--material-liquidGlass .island__glass-highlight,
+.island--material-liquidGlass .island__glass::before,
+.island--material-liquidGlass .island__material--glass::before,
+.island--material-frostedGlass .island__glass::before {
+  animation: glassRimIn 200ms ease-out backwards;
 }
 
-@keyframes glassRimBloom {
+.island[data-moving] .island__glass-refraction,
+.island[data-moving] .island__glass-highlight,
+.island[data-moving] .island__glass::before,
+.island[data-moving] .island__material--glass::before {
+  visibility: hidden;
+  animation: none;
+}
+
+@keyframes glassRimIn {
   from {
-    opacity: 0.35;
+    opacity: 0;
   }
-}
-
-/* Attached to the screen edge: the shoulders take the flat tint, liquid glass's streak moves to the bottom edge. */
-:root[data-island-top-edge="attached"] .island--shoulders:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass):not(.island--tucked),
-:root:not([data-island-top-edge]) .island--docked.island--shoulders:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass):not(.island--tucked) {
-  background: var(--glass-tint-color);
 }
 
 :root[data-island-top-edge="attached"] .island__glass-highlight,
@@ -158,18 +319,11 @@
  * and the top edge a little brighter. No pointer light or streak: frosted glass does not shine.
  */
 .island.island--material-frostedGlass {
-  background:
+  --glass-backdrop-wash: rgba(255, 255, 255, calc(0.06 + var(--is-light) * 0.16));
+  --island-material-fill:
     linear-gradient(180deg, rgba(255, 255, 255, var(--glass-sheen-alpha)), transparent 60%),
-    linear-gradient(rgba(255, 255, 255, calc(0.05 + var(--is-light) * 0.14)), rgba(255, 255, 255, calc(0.05 + var(--is-light) * 0.14))),
+    linear-gradient(var(--glass-backdrop-wash), var(--glass-backdrop-wash)),
     var(--glass-tint-color);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, calc(var(--glass-shadow-alpha) - var(--is-light) * 0.1));
-}
-
-.island--material-frostedGlass.island--collapsed {
-  background:
-    linear-gradient(rgba(255, 255, 255, calc(0.05 + var(--is-light) * 0.14)), rgba(255, 255, 255, calc(0.05 + var(--is-light) * 0.14))),
-    var(--glass-collapsed-tint-color);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, calc(0.16 - var(--is-light) * 0.06));
 }
 
 .island--material-frostedGlass .island__glass::before {
@@ -187,11 +341,11 @@
  * the pane. Here they are a faint layer of the tone's overlay with a hairline and a lit top edge,
  * the way the message and clipboard cards already sit on it, so the glass shows through.
  */
-.island:is(.island--material-liquidGlass, .island--material-lightGlass, .island--material-frostedGlass) {
-  /* A light veil of the tone's own base keeps muted text readable over a busy or bright desktop. */
+.island:is(.island--material-liquidGlass, .island--material-frostedGlass) {
+  /* A faint white mist, the glass's own colour: a dark grey veil read as a black box cut into the
+     pane (file shelf, translation; 2026-11-18, owner). The contrast veil keeps text readable. */
   --inner-panel-fill:
-    linear-gradient(160deg, rgba(var(--overlay-rgb), 0.07), rgba(var(--overlay-rgb), 0.02)),
-    rgba(var(--panel-deep-rgb), calc(0.22 + var(--is-light) * 0.12));
+    linear-gradient(160deg, rgba(255, 255, 255, calc(0.09 + var(--is-light) * 0.22)), rgba(255, 255, 255, calc(0.04 + var(--is-light) * 0.14)));
   --inner-panel-edge:
     inset 0 0 0 1px rgba(var(--overlay-rgb), 0.1),
     inset 0 1px 0 rgba(255, 255, 255, calc(0.08 + var(--is-light) * 0.32));
@@ -200,50 +354,17 @@
   --inner-panel-cutout: var(--glass-tint-color);
 }
 
-/* Frosted glass is mostly opaque already: a thinner veil is enough. */
+/* Frosted glass is milky already: a thinner mist is enough. */
 .island.island--material-frostedGlass {
   --inner-panel-fill:
-    linear-gradient(160deg, rgba(var(--overlay-rgb), 0.06), rgba(var(--overlay-rgb), 0.02)),
-    rgba(var(--panel-deep-rgb), calc(0.1 + var(--is-light) * 0.1));
-}
-
-/*
- * Aurora ambience (Appearance → Aurora ambience): an opt-in wash of purple and mint caught under
- * the pane. Two static radial gradients, one composited layer, no blur and no animation: it must
- * not add work to the island's spring. It sits at z-index 0, under the glass (z-index 1) and the
- * page (z-index 2), so it tints the material instead of washing over the text.
- */
-.island {
-  --aurora-opacity: 0;
-  --aurora-purple-alpha: 0.4;
-  --aurora-mint-alpha: 0.28;
-}
-
-.island--aurora {
-  --aurora-opacity: 1;
-}
-
-/* On a light pane the same light would drown the dark ink, so it is roughly halved. */
-.stage[data-tone="light"] .island--aurora {
-  --aurora-purple-alpha: 0.2;
-  --aurora-mint-alpha: 0.15;
-}
-
-.island__aurora {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: inherit;
-  corner-shape: var(--island-corner-shape, round);
-  pointer-events: none;
-  opacity: var(--aurora-opacity);
-  background:
-    radial-gradient(90% 150% at 10% 0%, rgba(147, 92, 255, var(--aurora-purple-alpha)), transparent 62%),
-    radial-gradient(100% 160% at 92% 100%, rgba(52, 214, 168, var(--aurora-mint-alpha)), transparent 60%);
+    linear-gradient(160deg, rgba(255, 255, 255, calc(0.07 + var(--is-light) * 0.16)), rgba(255, 255, 255, calc(0.03 + var(--is-light) * 0.1)));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .island__glass-refraction {
+  .island__glass-refraction,
+  .island__glass-highlight,
+  .island__glass::before,
+  .island__material--glass::before {
     animation: none !important;
   }
 }

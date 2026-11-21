@@ -6,16 +6,21 @@ import { CollapsedIslandSection } from "../../features/appearance/CollapsedIslan
 import { CollapsedLayoutEditor } from "../../features/appearance/CollapsedLayoutEditor";
 import { ColorSettingsSection } from "../../features/appearance/ColorSettingsSection";
 import { AppearancePresetSection } from "../../features/appearance/AppearancePresetSection";
+import { IslandCornerRows } from "../../features/appearance/IslandCornerRows";
 import { IslandPreview } from "../../features/appearance/IslandPreview";
-import { AuroraRow, FontRows, MaterialRows, OpacityRow, PageButtonsRow, ScaleRows, SchemeRow } from "../../features/appearance/StyleRows";
+import {
+  CollapsedScaleRow, ExpandedScaleRow, FontRows, MaterialRows, OpacityRow, PageButtonsRow, SchemeRow,
+} from "../../features/appearance/StyleRows";
 import { TopEdgeShoulderRows } from "../../features/appearance/TopEdgeShoulderRows";
+import { TuckLookRows } from "../../features/appearance/TuckLookRows";
 import type { IslandSettings } from "../../features/appearance/types";
 import { requestPanelPreview } from "./storage";
 import { appearancePreviewMode } from "./appearancePreview";
 
 /**
- * Settings → Appearance (docs/design/settings.md): a preview, then the theme and its colours, the
- * text and sizes, what sits where on the island, the notch and the top-edge curves, and last the
+ * Settings → Appearance (docs/design/settings.md, 2026-11-19): one kind of setting per group, so
+ * each is found in one place: a preview; the theme; colours; the font; every size; every corner;
+ * what sits where on the collapsed island and what it shows first; the tucked look; and last the
  * whole-look presets.
  */
 export function AppearanceSettingsPage({
@@ -25,7 +30,8 @@ export function AppearanceSettingsPage({
   settings: IslandSettings;
   onSettingsChange: (settings: IslandSettings) => void;
 }) {
-  const text = useTranslation().settings.appearance;
+  const t = useTranslation();
+  const text = t.settings.appearance;
   const [expandedScalePreview, setExpandedScalePreview] = useState<number | null>(null);
   const [fontSizePreview, setFontSizePreview] = useState<number | null>(null);
   const updateAppearance = (next: IslandSettings) => {
@@ -44,21 +50,27 @@ export function AppearanceSettingsPage({
       <SettingsGroup title={text.themeTitle}>
         <SchemeRow {...rows} />
         <MaterialRows {...rows} />
-        <AuroraRow {...rows} />
         <OpacityRow {...rows} />
       </SettingsGroup>
       <ColorSettingsSection {...rows} />
       <SettingsGroup title={text.textSizeTitle}>
         <FontRows {...rows} onFontSizePreview={setFontSizePreview} />
-        <ScaleRows {...rows} onExpandedScalePreview={setExpandedScalePreview} />
+      </SettingsGroup>
+      <SettingsGroup title={text.sizeTitle} footer={text.collapsedDimensions.hint}>
+        <CollapsedScaleRow {...rows} />
+        <ExpandedScaleRow {...rows} onExpandedScalePreview={setExpandedScalePreview} />
+        <CollapsedDimensionRows settings={settings} onChange={updateAppearance} />
+      </SettingsGroup>
+      <SettingsGroup title={text.cornersTitle}>
+        <IslandCornerRows settings={settings} onChange={updateAppearance} />
+        {settings.islandShape !== "capsule" && <TopEdgeShoulderRows settings={settings} onChange={updateAppearance} />}
       </SettingsGroup>
       <CollapsedLayoutEditor {...rows}>
         <PageButtonsRow {...rows} />
       </CollapsedLayoutEditor>
       <CollapsedIslandSection {...rows} />
-      <SettingsGroup title={text.shapeTitle} footer={text.collapsedDimensions.hint}>
-        <CollapsedDimensionRows settings={settings} onChange={updateAppearance} />
-        <TopEdgeShoulderRows settings={settings} onChange={updateAppearance} />
+      <SettingsGroup title={t.settings.expand.tuckTitle}>
+        <TuckLookRows {...rows} onPreviewTuck={() => requestPanelPreview("tucked")} />
       </SettingsGroup>
       <AppearancePresetSection {...rows} />
     </>

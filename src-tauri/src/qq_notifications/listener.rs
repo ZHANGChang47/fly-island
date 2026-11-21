@@ -27,13 +27,25 @@ const QQ_APP_ID: &str = "QQ";
 const REGISTRATION_REPAIR: &str =
     include_str!("repair-qq-notification-registration.ps1");
 
-const DIAGNOSTIC_TITLE: &str = "FocuSD QQ 通知诊断";
+const DIAGNOSTIC_TITLE: &str = "Fly Island QQ 通知诊断";
 
 const DIAGNOSTIC_BODY: &str = "这是本机通道测试，不是聊天消息。";
 
+/// How often QQ's own notification setting is looked at while it is fine, and while it is not.
+const SETTING_CHECK: Duration = Duration::from_secs(30);
+const SETTING_RECHECK_WHILE_BROKEN: Duration = Duration::from_secs(5);
+
 pub(super) fn monitor(service: Arc<NotificationService>, receiver: mpsc::Receiver<()>) {
+    // Started at sign-in: wait for the desktop to settle first (the listener may repair QQ's
+    // registration through PowerShell).
+    crate::system::startup::hold_after_autostart(std::time::Duration::from_secs(30));
+    // Held for the life of the thread: each read entered and left the Windows Runtime on its own,
+    // and the last leave tore it down, so it was set up from scratch every second.
+    let _apartment = win32::com::WinRtApartment::multithreaded().ok();
     let mut repair_generation = None;
     let mut repair_error = None;
+    // When QQ's setting was last looked at, for which generation, and what was wrong then.
+    let mut channel_check: Option<(u64, Instant, Option<String>)> = None;
     loop {
         let (enabled, generation) = match service.state.lock() {
             Ok(state) => (state.snapshot.enabled, state.generation),
@@ -47,22 +59,19 @@ pub(super) fn monitor(service: Arc<NotificationService>, receiver: mpsc::Receive
         }
         let poll = read_notifications();
         let channel_error = if matches!(&poll, Ok((NotificationStatus::Listening, _))) {
-            let setting = qq_notification_setting();
-            if repair_generation != Some(generation) {
-                repair_error = None;
-                if should_repair_registration(&setting) {
-                    repair_generation = Some(generation);
-                    repair_error = repair_registration(&service, generation).err();
-                }
-            }
-            let setting = qq_notification_setting();
-            if matches!(setting, Ok(NotificationSetting::Enabled)) {
-                repair_error = None;
-                None
+            let due = channel_check.as_ref().is_none_or(|(checked_for, at, error)| {
+                *checked_for != generation
+                    || at.elapsed() >= if error.is_some() { SETTING_RECHECK_WHILE_BROKEN } else { SETTING_CHECK }
+            });
+            if due {
+                let error = check_channel(&service, generation, &mut repair_generation, &mut repair_error);
+                channel_check = Some((generation, Instant::now(), error.clone()));
+                error
             } else {
-                repair_error.clone().or_else(|| registration_error(setting))
+                channel_check.as_ref().and_then(|(_, _, error)| error.clone())
             }
         } else {
+            channel_check = None;
             None
         };
         let change = {
@@ -109,6 +118,30 @@ pub(super) fn monitor(service: Arc<NotificationService>, receiver: mpsc::Receive
         {
             return;
         }
+    }
+}
+
+/// What is wrong with QQ's notification channel, repairing its registration once per generation.
+fn check_channel(
+    service: &NotificationService,
+    generation: u64,
+    repair_generation: &mut Option<u64>,
+    repair_error: &mut Option<String>,
+) -> Option<String> {
+    let setting = qq_notification_setting();
+    if *repair_generation != Some(generation) {
+        *repair_error = None;
+        if should_repair_registration(&setting) {
+            *repair_generation = Some(generation);
+            *repair_error = repair_registration(service, generation).err();
+        }
+    }
+    let setting = qq_notification_setting();
+    if matches!(setting, Ok(NotificationSetting::Enabled)) {
+        *repair_error = None;
+        None
+    } else {
+        repair_error.clone().or_else(|| registration_error(setting))
     }
 }
 
@@ -258,10 +291,10 @@ fn read_qq_notification(
     {
         return Ok(None);
     }
-    // The island's own channel test, under its current name or the former one.
+    // The island's own channel test.
     if parts
         .first()
-        .is_some_and(|title| title == "Fly Island QQ notification diagnostic" || title == "FocuSD QQ notification diagnostic")
+        .is_some_and(|title| title == "Fly Island QQ notification diagnostic")
         && parts
             .iter()
             .any(|body| body == "Local channel test; this is not a chat message.")

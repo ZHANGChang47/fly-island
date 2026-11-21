@@ -27,7 +27,7 @@ pub(crate) fn init(app: &AppHandle) {
 }
 
 fn run_hotkey_loop() {
-    let class_name = "FocuSDFilePreviewHotkey";
+    let class_name = "FlyIslandFilePreviewHotkey";
     let instance = match message_window::module_instance() {
         Ok(value) => value,
         Err(error) => {
@@ -42,7 +42,7 @@ fn run_hotkey_loop() {
     let hwnd = match message_window::create_message_only_window(
         instance,
         class_name,
-        "FocuSD File Preview Hotkey",
+        "Fly Island File Preview Hotkey",
     ) {
         Ok(value) => value,
         Err(error) => {

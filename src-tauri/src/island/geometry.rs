@@ -22,27 +22,65 @@ pub(super) const MIN_COLLAPSED_ISLAND_WIDTH: f64 = 240.0;
 pub(super) const MAX_COLLAPSED_ISLAND_WIDTH: f64 = 480.0;
 pub(super) const COLLAPSED_ISLAND_WIDTH: f64 = 340.0;
 pub(super) const COLLAPSED_ISLAND_HEIGHT: f64 = 38.0;
-pub(super) const MIN_COLLAPSED_ISLAND_HEIGHT: f64 = 32.0;
+pub(super) const MIN_COLLAPSED_ISLAND_HEIGHT: f64 = 26.0;
 pub(super) const MAX_COLLAPSED_ISLAND_HEIGHT: f64 = 60.0;
 pub(super) const COLLAPSED_RADIUS: f64 = 12.0;
 pub(super) const EXPANDED_ISLAND_WIDTH: f64 = 560.0;
 pub(super) const DEFAULT_EXPANDED_ISLAND_HEIGHT: f64 = 306.0;
 pub(super) const MIN_EXPANDED_ISLAND_HEIGHT: f64 = 220.0;
-// Up to 656px, the tallest page the native window takes (five Agent sessions);
-// the panel height setting stops at 546.
-pub(super) const EXPANDED_ISLAND_HEIGHT_RANGE: f64 = 350.0;
+// Up to 800px. Five Agent sessions at 120% text with several usage lines pass 656px, the old
+// limit; the native hit test then ended above the panel's real bottom, so its lowest rows let
+// clicks through and the cursor reaching them counted as leaving the island. The panel height
+// setting stops at 546.
+pub(super) const EXPANDED_ISLAND_HEIGHT_RANGE: f64 = 494.0;
 pub(super) const EXPANDED_RADIUS: f64 = 30.0;
 // Range accepted for the expanded bottom radius; the island sends DEFAULT_ISLAND_CORNER_RADIUS
 // (src/features/appearance/settingsLimits.ts).
-pub(super) const MIN_CORNER_RADIUS: f64 = 16.0;
-pub(super) const MAX_CORNER_RADIUS: f64 = 48.0;
+pub(super) const MIN_CORNER_RADIUS: f64 = 8.0;
+pub(super) const MAX_CORNER_RADIUS: f64 = 96.0;
+// Range accepted for the collapsed bar's own radius (COLLAPSED_CORNER_RADIUS in settingsLimits.ts).
+pub(super) const MIN_COLLAPSED_CORNER_RADIUS: f64 = 0.0;
+pub(super) const MAX_COLLAPSED_CORNER_RADIUS: f64 = 40.0;
 pub(super) const STAGE_WINDOW_PADDING_Y: f64 = 24.0;
+/// The strip of the island left on screen by the "edge" tuck: 10px by default, set in
+/// Settings → General (tuckEdgeHeight, src/features/appearance/settingsLimits.ts TUCK_EDGE_HEIGHT).
 pub(super) const TUCKED_VISIBLE_EDGE_HEIGHT: f64 = 10.0;
+pub(super) const MIN_TUCKED_EDGE_HEIGHT: f64 = 3.0;
+pub(super) const MAX_TUCKED_EDGE_HEIGHT: f64 = 20.0;
 pub(super) const POSITION_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 
 pub(super) static POSITION_ANIMATION_GENERATION: AtomicU64 = AtomicU64::new(0);
 /// The slide in progress: its generation and where it ends.
 static RUNNING_SLIDE: Mutex<Option<(u64, (i32, i32))>> = Mutex::new(None);
+
+/// Remember the actual resting position, rather than an old drag coordinate: Windows can
+/// reposition the stage on a DPI/work-area change without an island drag being in progress.
+pub(super) fn remember_position_before_tuck(
+    window: &WebviewWindow,
+    state: IslandWindowState,
+    next_is_tucked: bool,
+) -> Result<Option<IslandPosition>, String> {
+    if state.custom_position.is_none() || state.is_tucked || !next_is_tucked || state.is_dragging {
+        return Ok(state.custom_position);
+    }
+    let running = *RUNNING_SLIDE.lock().unwrap_or_else(PoisonError::into_inner);
+    let generation = POSITION_ANIMATION_GENERATION.load(Ordering::SeqCst);
+    let observed = window.outer_position().map_err(|error| error.to_string())?;
+    Ok(position_before_tuck(state, observed, running, generation))
+}
+
+pub(super) fn position_before_tuck(
+    state: IslandWindowState,
+    observed: PhysicalPosition<i32>,
+    running: Option<(u64, (i32, i32))>,
+    generation: u64,
+) -> Option<IslandPosition> {
+    state.custom_position?;
+    // Re-tucking during a reveal must keep its normal destination, not an intermediate frame.
+    let (x, y) = running.filter(|(owner, _)| *owner == generation)
+        .map_or((observed.x, observed.y), |(_, target)| target);
+    Some(IslandPosition { x, y })
+}
 
 /// Whether an update that does not animate should leave the running slide alone:
 /// it ends where the update would put the window anyway. Jumping there instead cut
@@ -91,12 +129,9 @@ pub(crate) fn apply_stage_geometry(
     let monitor_position = monitor.position();
     let monitor_size = monitor.size();
     let physical_width = (STAGE_WINDOW_WIDTH * scale).round() as i32;
-    let physical_top_offset = (state.margin_y * scale).round() as i32;
-    let tucked_top_offset = tucked_top_offset(state, scale);
     let top_inset = monitor_top_inset(&monitor);
     let centered_x = monitor_position.x + (monitor_size.width as i32 - physical_width) / 2;
-    let normal_y = monitor_position.y + top_inset + physical_top_offset;
-    let tucked_y = monitor_position.y + top_inset + tucked_top_offset;
+    let (normal_y, tucked_y) = stage_top_positions(state, monitor_position.y, top_inset, scale);
     let mut positioned_state = state;
     if !has_custom_monitor {
         positioned_state.custom_position = None;
@@ -104,8 +139,10 @@ pub(crate) fn apply_stage_geometry(
     let (x, y) = resolve_stage_position(positioned_state, centered_x, normal_y, tucked_y);
     super::top_edge::sync_from_stage(window, positioned_state, monitor_position.y + top_inset);
     // At the very top the island overlaps app bars such as docks, which may have raised
-    // themselves into the topmost band after it; take the front again.
-    if let Ok(hwnd) = window.hwnd() {
+    // themselves into the topmost band after it; take the front again. Not over a full-screen
+    // game (game mode tucking the island resizes it): reordering the topmost band there is
+    // what the game must not see (#73).
+    if let Some(hwnd) = window.hwnd().ok().filter(|_| !super::state::game_quiet()) {
         win32::taskbar_edge::raise_topmost(hwnd);
     }
 
@@ -203,7 +240,7 @@ pub(super) fn tucked_top_offset(state: IslandWindowState, dpi: f64) -> i32 {
     }
     let height = state.collapsed_height * state.collapsed_scale;
     let visible_height = state.tuck_style.hot_zone_size()
-        .map_or(TUCKED_VISIBLE_EDGE_HEIGHT, |(_, height)| height * state.collapsed_scale);
+        .map_or(state.tuck_edge_height, |(_, height)| height * state.collapsed_scale);
     -((height - visible_height).max(0.0) * dpi).round() as i32
 }
 
@@ -279,6 +316,12 @@ pub(super) fn top_taskbar_bottom(
 
 pub(super) fn anchor_top_inset(monitor_top: i32, taskbar_bottom: Option<i32>) -> i32 {
     taskbar_bottom.map_or(0, |bottom| (bottom - monitor_top).max(0))
+}
+
+/// Monitor/taskbar coordinates are physical; only the logical margin and tuck offset need DPI.
+pub(super) fn stage_top_positions(state: IslandWindowState, monitor_top: i32, top_inset: i32, dpi: f64) -> (i32, i32) {
+    let top = monitor_top + top_inset;
+    (top + (state.margin_y * dpi).round() as i32, top + tucked_top_offset(state, dpi))
 }
 
 pub(super) fn resolve_stage_position(

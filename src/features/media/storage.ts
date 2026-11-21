@@ -1,6 +1,19 @@
 import { readJson, writeJson } from "../../lib/storage.ts";
+import { normalizeMusicShortcuts, type MusicShortcuts } from "./shortcuts.ts";
 
-export const MEDIA_DIAGNOSTICS_DISMISSED_KEY = "focusd-island-media-diagnostics-dismissed";
+export const MUSIC_SHORTCUTS_STORAGE_KEY = "fly-island-music-shortcuts";
+export const MUSIC_SHORTCUTS_SAVED_EVENT = "fly-island-music-shortcuts-saved";
+
+export function loadMusicShortcuts(): MusicShortcuts {
+  return normalizeMusicShortcuts(readJson(MUSIC_SHORTCUTS_STORAGE_KEY));
+}
+
+export function saveMusicShortcuts(value: MusicShortcuts) {
+  writeJson(MUSIC_SHORTCUTS_STORAGE_KEY, normalizeMusicShortcuts(value));
+  window.dispatchEvent(new Event(MUSIC_SHORTCUTS_SAVED_EVENT));
+}
+
+export const MEDIA_DIAGNOSTICS_DISMISSED_KEY = "fly-island-media-diagnostics-dismissed";
 
 export function loadMediaDiagnosticsDismissed(): string[] {
   const value = readJson(MEDIA_DIAGNOSTICS_DISMISSED_KEY);
@@ -19,12 +32,12 @@ export type KnownMediaSource = {
   archived?: boolean;
 };
 
-export const MUSIC_SOURCE_PRIORITY_STORAGE_KEY = "focusd-island-music-sources";
+export const MUSIC_SOURCE_PRIORITY_STORAGE_KEY = "fly-island-music-sources";
 /**
  * Fired on this window after the order is saved: the storage event only reaches other windows,
  * and Settings may be open inside the island.
  */
-export const MUSIC_SOURCE_PRIORITY_SAVED_EVENT = "focusd-island-music-sources-saved";
+export const MUSIC_SOURCE_PRIORITY_SAVED_EVENT = "fly-island-music-sources-saved";
 
 export function loadMusicSourcePriority(): KnownMediaSource[] {
   try {

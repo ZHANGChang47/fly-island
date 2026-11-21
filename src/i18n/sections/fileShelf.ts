@@ -1,12 +1,14 @@
 export type FileShelfText = {
   title: string;
+  /** The note a new user finds on the shelf: its file name (without .txt) and its text. */
+  welcomeFileName: string;
+  welcomeContent: string;
   clear: string;
   confirmClear: string;
   empty: string;
   /** Under the empty message: the shelf keeps references, not copies. */
   emptyNote: string;
   /** Under the tiles: how to take files back out. */
-  footerHint: (reveal: boolean) => string;
   dropHint: string;
   /** The open place after a few tiles, where more files can be dropped. */
   moreSlot: string;
@@ -32,11 +34,18 @@ export type FileShelfText = {
 
 export const zhCN: FileShelfText = {
   title: "文件中转",
+  welcomeFileName: "欢迎使用文件中转",
+  welcomeContent: `你好！这里是文件中转。
+
+把文件或文件夹拖到小岛上，它们会先放在这里；需要的时候再从这里拖到别的窗口、聊天框或文件夹里。
+
+文件中转只记下文件的位置，不会复制或移动文件本身。
+看完可以把这个文件移出中转，它不会再出现。
+`,
   clear: "清空文件中转",
   confirmClear: "确认清空（不会删除文件）",
   empty: "把文件拖到岛上，就会暂存在这里",
   emptyNote: "只记住位置，不复制文件；移除也不会删掉原文件",
-  footerHint: (reveal) => `拖出复制，列表保留 · Shift 移动 · 双击${reveal ? "在文件夹中显示" : "打开"}`,
   dropHint: "松开鼠标，加入文件中转",
   moreSlot: "还能再放",
   folder: "文件夹",
@@ -61,11 +70,18 @@ export const zhCN: FileShelfText = {
 
 export const en: FileShelfText = {
   title: "File shelf",
+  welcomeFileName: "Welcome to the file shelf",
+  welcomeContent: `Hi! This is the file shelf.
+
+Drop files or folders on the island to park them here, then drag them out into another window, a chat or a folder when you need them.
+
+The shelf only remembers where files are; it never copies or moves them.
+Remove this note from the shelf once you have read it; it will not come back.
+`,
   clear: "Clear shelf",
   confirmClear: "Confirm clear (files are kept)",
   empty: "Drop files on the island to keep them here",
   emptyNote: "Only the location is kept, never a copy; removing leaves the file alone",
-  footerHint: (reveal) => `Drag to copy; kept on shelf · Shift to move · Double-click to ${reveal ? "show in folder" : "open"}`,
   dropHint: "Release to add to the shelf",
   moreSlot: "Room for more",
   folder: "Folder",

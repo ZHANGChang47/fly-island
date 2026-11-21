@@ -2,7 +2,7 @@
 
 小岛自己检查新版本，在应用内下载、安装并自动重启。
 
-- **自动更新（默认开启，2026-11-13 起）**：设置 →「关于」→「自动更新」，存在 `focusd-island-auto-update`。开启时，主窗口（`features/updater/updaterController.ts`）启动后检查一次，之后每 6 小时检查一次（单个 `setTimeout`，不轮询）；检查或下载失败按 1、5、30 分钟退避重试，三次后回到 6 小时；后台下载失败时不进入 error，仍停在「有新版本」（带失败原因），待办照常出现，点「更新」时重新下载；每次检查前重新读一遍代理。下载好后，待办列表顶部出现「更新到 vX.Y.Z」的待办；小岛处于收起态（含贴边收起、托盘隐藏）且 2 分钟内没有指针或键盘操作时，`useIdleUpdateInstall` 直接调用安装（NSIS passive），装完由安装器重新打开小岛。展开面板、悬停或打字都会重新计时，游戏勿扰期间不自动安装。
+- **自动更新（默认开启，2026-11-13 起）**：设置 →「关于」→「自动更新」，存在 `fly-island-auto-update`。开启时，主窗口（`features/updater/updaterController.ts`）启动后检查一次，之后每 6 小时检查一次（单个 `setTimeout`，不轮询）；检查或下载失败按 1、5、30 分钟退避重试，三次后回到 6 小时；后台下载失败时不进入 error，仍停在「有新版本」（带失败原因），待办照常出现，点「更新」时重新下载；每次检查前重新读一遍代理。下载好后，待办列表顶部出现「更新到 vX.Y.Z」的待办；小岛处于收起态（含贴边收起、托盘隐藏）且 2 分钟内没有指针或键盘操作时，`useIdleUpdateInstall` 直接调用安装（NSIS passive），装完由安装器重新打开小岛。展开面板、悬停或打字都会重新计时，游戏勿扰期间不自动安装。
 - **关闭自动更新**：不再自动检查，也不自动安装。
 - **「关于」页的更新组**：无论开关如何都显示当前状态（还没检查、正在检查、已是最新、发现新版本、下载进度、可安装、出错及原因）和「检查更新」按钮；有可安装的版本时多一行「立即安装」。关掉待办页的用户也能从这里更新。（2026-11-12 曾去掉手动检查那一行，2026-11-13 恢复。）
 - 删掉更新待办只是不再在待办里提醒，下载好的包保留。下载只在主窗口里进行，独立设置窗口只镜像状态并把操作转给主窗口。
@@ -12,12 +12,17 @@
 
 ## 更新通道
 
-设置里**没有通道选项**（2026-11-11 用户要求去掉「测试版」）：小岛只检查稳定版。3.0.2 及更早的「关于」页有「稳定版 / 测试版」下拉，存在 `focusd-island-update-channel`；现在不再读这个 key，以前选过测试版的用户（包括正在用 beta 版本的）也按稳定版检查，等稳定版高于当前版本时收到更新。原生命令 `updater_check` 仍接受 `channel` 参数，前端固定传 `"stable"`。
+**测试版（2026-11-18 用户要求恢复，取代 2026-11-11 去掉测试版的决定）**：发布测试版不会推送给任何人。设置 →「关于」→ 更新组里有一行「测试版」：
+
+- 正式版用户点「下载测试版」，查一次 beta 通道；有比当前新的测试版就照常下载，在同一组的「立即安装」安装（自动更新开着时，小岛空闲也会装上）；没有就显示「暂时没有比当前更新的测试版」。
+- 正在用测试版（版本号带 `-`）时，这一行变成「正在使用测试版 vX」和「还原到正式版」：查稳定版清单并允许降级（`updater_check` 的 `allowDowngrade`，任何不同的版本都算更新），下载后安装正式版的最新版本。NSIS 的 `allowDowngrades` 保持默认开启，所以能装回旧版本。
+- 测试版用户的自动检查和「检查更新」走 beta 通道（清单取不到时退回稳定版），所以会继续收到新的测试版，也会收到更高的正式版。正式版用户的自动检查只看稳定版；他们主动找来的测试版下载好之前，不会被定时检查覆盖。
+- 前端逻辑在 `src/features/updater/updateChannel.ts`（目标 `stable` / `beta` / `restore`）和 `updaterController.ts` 的 `switchChannel`。3.0.2 及更早版本存在 `fly-island-update-channel` 里的旧选择仍然不读。
 
 下面是两个通道本身，旧客户端仍在使用：
 
 - **稳定版**读 `plugins.updater.endpoints`，即 `releases/latest/download/latest.json`。GitHub 的 latest 永远不会是 Pre-release，而 beta 版都发成 Pre-release。0.3.0 及更早的客户端没有通道设置，也只读这里。
-- **测试版**（3.0.2 及更早、选过测试版的客户端）读同一组镜像下的 `releases/download/beta-channel/latest.json`（由 `src-tauri/src/system/update_channel.rs` 从稳定端点换算），全部取不到时再退回稳定版端点，所以 beta 清单缺失或下载失败时，测试版用户仍能收到正式版。`beta-channel` 是一个固定的 Pre-release，只放这份清单，**不要删除**。
+- **测试版**（在「关于」里要测试版的用户、正在用测试版的客户端，以及 3.0.2 及更早选过测试版的客户端）读同一组镜像下的 `releases/download/beta-channel/latest.json`（由 `src-tauri/src/system/update_channel.rs` 从稳定端点换算），全部取不到时再退回稳定版端点，所以 beta 清单缺失或下载失败时，测试版用户仍能收到正式版。`beta-channel` 是一个固定的 Pre-release，只放这份清单，**不要删除**。
 - 每次 `pnpm release`（正式版和 beta 版都算）发布后会刷新 `beta-channel` 上的清单，除非它已经指向更新的版本。所以测试版用户也会收到正式版；从测试版切回稳定版不会降级，要等稳定版追上当前版本才收到更新。
 
 版本号带 `-`（如 `0.3.1-beta.1`）就算 beta：`release.mjs` 会把它发成 Pre-release、不设为 latest，判断与比较在 `scripts/release/channel.mjs`。
@@ -91,6 +96,8 @@ pnpm tauri signer generate -w $env:USERPROFILE\.tauri\fly-island.key
 
 已配置的发布机器运行 `pnpm release` 即可，无需每次复制密钥内容或设置环境变量。本机配置路径为 `%USERPROFILE%\.tauri\fly-island\release.json`，格式如下（路径应为实际绝对路径）：
 
+??????? `FLY_ISLAND_SIGNING_CONFIG` ???????????CI ???????? `TAURI_UPDATER_PUBKEY`?`TAURI_SIGNING_PRIVATE_KEY` ? `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`?????????? Fly Island ???
+
 ```json
 {
   "schemaVersion": 1,
@@ -100,7 +107,7 @@ pnpm tauri signer generate -w $env:USERPROFILE\.tauri\fly-island.key
 }
 ```
 
-私钥本身带密码；`password.dpapi` 是通过 `ConvertFrom-SecureString` 生成的 Windows 当前用户加密密码。密钥目录应只授予维护者账号访问。文件均位于仓库外，不能提交到 Git。可用 `FOCUSD_SIGNING_CONFIG` 指定其他本机配置路径。
+私钥本身带密码；`password.dpapi` 是通过 `ConvertFrom-SecureString` 生成的 Windows 当前用户加密密码。密钥目录应只授予维护者账号访问。文件均位于仓库外，不能提交到 Git。可用 `FLY_ISLAND_SIGNING_CONFIG` 指定其他本机配置路径。
 
 更换 Windows 用户或重装系统后，原 DPAPI 密码文件无法解密。恢复时使用受保护备份中的私钥及恢复密码重新创建 DPAPI 密码文件；同一条发布线继续使用原密钥，不重新生成。恢复密码与私钥都属于敏感文件。
 
@@ -158,7 +165,7 @@ CI 也可以复用同样的步骤：在仓库 Secrets 里存 `TAURI_UPDATER_PUBK
 
 ## 撤回有问题的版本
 
-已经装上的版本没法从远处卸载，能做的是让还没更新的人不再收到它，再尽快发一个修好的版本。客户端只会升级、不会降级，所以"退回上一版"对已更新的人无效，修复只能靠更高的版本号。
+已经装上的版本没法从远处卸载，能做的是让还没更新的人不再收到它，再尽快发一个修好的版本。客户端自动检查只会升级、不会降级，所以"退回上一版"对已更新的人无效，修复只能靠更高的版本号（测试版用户可以在「关于」里手动还原到正式版）。
 
 **测试版（beta）有问题**：把 beta 通道的清单换回上一个好的版本。
 

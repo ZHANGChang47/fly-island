@@ -6,9 +6,12 @@ use windows::Win32::Foundation::HWND;
 
 use super::{
     geometry::{tucked_top_offset, STAGE_WINDOW_WIDTH},
-    state::{read_window_state, CornerShape, IslandWindowState},
+    state::{game_quiet, read_window_state, CornerShape, IslandMode, IslandWindowState},
 };
 use crate::win32;
+
+/// Logical px beside the collapsed bar that still count as on it, before the island scale.
+const COLLAPSED_HIT_SLOP: f64 = 4.0;
 
 // Mirrored by ISLAND_HOVER_CHANGED_EVENT in src/windows/island/api.ts. The payload says
 // whether the cursor is over the island shape. The webview's own mouseleave is unreliable
@@ -25,7 +28,11 @@ pub(crate) fn start_cursor_passthrough_loop(window: WebviewWindow) {
         let hwnd = window.hwnd().ok();
 
         loop {
-            let is_inside = hwnd.is_none_or(cursor_is_inside_island);
+            // A press that started on the island (selecting text, dragging a slider or a
+            // scrollbar) keeps the window taking the mouse until it is released: passing clicks
+            // through mid-drag ended the gesture and dropped the selection being made.
+            let is_inside = hwnd.is_none_or(cursor_is_inside_island)
+                || (!ignoring_cursor && win32::input::is_left_button_down());
             let should_ignore = !is_inside;
 
             if should_ignore != ignoring_cursor
@@ -37,8 +44,9 @@ pub(crate) fn start_cursor_passthrough_loop(window: WebviewWindow) {
             if is_inside != was_inside {
                 was_inside = is_inside;
                 let _ = window.emit(ISLAND_HOVER_CHANGED_EVENT, is_inside);
-                // Once per hover: a dock that raised itself over the island gives way.
-                if let Some(hwnd) = hwnd.filter(|_| is_inside) {
+                // Once per hover: a dock that raised itself over the island gives way. Not over
+                // a game: reordering topmost windows there can knock it out of full screen.
+                if let Some(hwnd) = hwnd.filter(|_| is_inside && !game_quiet()) {
                     win32::taskbar_edge::raise_topmost(hwnd);
                 }
             }
@@ -61,6 +69,11 @@ pub(super) fn cursor_is_inside_island(hwnd: HWND) -> bool {
     let local_x = (cursor.x - window_rect.left) as f64;
     let local_y = (cursor.y - window_rect.top) as f64;
     let state = read_window_state();
+    // Tucked over a game: the edge strip lets everything through, so the cursor reaching the
+    // top of the screen never brings the island out or activates it (#73).
+    if state.is_tucked && game_quiet() {
+        return false;
+    }
 
     point_in_island(state, physical_scale, local_x, local_y)
 }
@@ -68,6 +81,10 @@ pub(super) fn cursor_is_inside_island(hwnd: HWND) -> bool {
 /// Physical stage coordinates, shared by the live cursor loop and the DPI tests.
 pub(super) fn point_in_island(state: IslandWindowState, physical_scale: f64, local_x: f64, local_y: f64) -> bool {
     let window_width = STAGE_WINDOW_WIDTH * physical_scale;
+    // A game-mode message preview is only shown: the cursor goes on to the game.
+    if state.click_through {
+        return false;
+    }
     if let Some((width, height)) = state.tuck_style.hot_zone_size().filter(|_| state.is_tucked) {
         let scale = state.collapsed_scale * physical_scale;
         let left = (window_width - width * scale) / 2.0;
@@ -85,6 +102,21 @@ pub(super) fn point_in_island(state: IslandWindowState, physical_scale: f64, loc
     let island_top = 0.0;
     let radius = state.bottom_corner_radius() * state.active_scale() * physical_scale;
     let top_radius = state.top_corner_radius() * state.active_scale() * physical_scale;
+
+    // The collapsed bar takes its whole box and a little beside it, rounded corners included. The
+    // first button and the last sit in those corners, and some users found the left half of the
+    // Agent icon and the minimize button did nothing (2026-11-19): with the corners cut exactly,
+    // a click a pixel or two off the curve fell through to the window behind.
+    if matches!(state.mode, IslandMode::Collapsed) && !state.is_tucked {
+        let slop = COLLAPSED_HIT_SLOP * state.active_scale() * physical_scale;
+        if local_x >= island_left - slop
+            && local_x <= island_left + island_width + slop
+            && local_y >= island_top
+            && local_y <= island_top + island_height
+        {
+            return true;
+        }
+    }
 
     point_in_notch(
         local_x,

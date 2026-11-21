@@ -1,10 +1,11 @@
 //! History service, clipboard reads and writes, and the clipboard listener window.
 
 use arboard::{Clipboard, ImageData};
-use image::RgbaImage;
+use image::{ImageReader, RgbaImage};
 use std::{
     borrow::Cow,
     fs,
+    path::Path,
     sync::{
         mpsc::{self, SyncSender},
         Mutex, OnceLock,
@@ -70,6 +71,11 @@ enum ClipboardCapture {
         width: usize,
         height: usize,
         rgba: Vec<u8>,
+        files: Option<Vec<String>>,
+    },
+    Files {
+        hash: String,
+        paths: Vec<String>,
     },
 }
 
@@ -107,6 +113,12 @@ impl ClipboardHistoryService {
         };
 
         match item.kind {
+            // Files still on disk go back as files; any that moved fall back to their paths.
+            ClipboardHistoryItemKind::Text if item.files.as_ref().is_some_and(|files| {
+                !files.is_empty() && files.iter().all(|path| std::path::Path::new(path).exists())
+            }) => {
+                write_clipboard_files(item.files.as_deref().unwrap_or_default())?;
+            }
             ClipboardHistoryItemKind::Text => {
                 let text = item
                     .text
@@ -122,7 +134,19 @@ impl ClipboardHistoryService {
                 let rgba = image::open(&image.original_path)
                     .map_err(|error| format!("Failed to load clipboard image: {error}"))?
                     .to_rgba8();
-                write_clipboard_image(rgba.width() as usize, rgba.height() as usize, &rgba)?;
+                let files = item.files.as_deref().filter(|files| {
+                    image_file_list_is_valid(files)
+                });
+                if let Some(files) = files {
+                    write_clipboard_image_with_files(
+                        rgba.width() as usize,
+                        rgba.height() as usize,
+                        &rgba,
+                        files,
+                    )?;
+                } else {
+                    write_clipboard_image(rgba.width() as usize, rgba.height() as usize, &rgba)?;
+                }
             }
         }
 
@@ -230,7 +254,7 @@ impl ClipboardHistoryService {
 
     pub(super) fn read_image(&self, id: &str) -> Result<String, String> {
         let path = self.image_field(id, |image| image.original_path.clone())?;
-        super::image_access::read_image(&self.image_dir, &path)
+        super::image_access::read_image(&self.image_dir(), &path)
     }
 
     /// The list's thumbnail, read on demand; one older history kept inline is returned as is.
@@ -238,7 +262,7 @@ impl ClipboardHistoryService {
         let (path, inline) = self.image_field(id, |image| (image.thumbnail_path.clone(), image.thumbnail_data_url.clone()))?;
         match inline {
             Some(data_url) => Ok(data_url),
-            None => super::image_access::read_image(&self.image_dir, &path),
+            None => super::image_access::read_image(&self.image_dir(), &path),
         }
     }
 
@@ -325,12 +349,28 @@ impl ClipboardHistoryService {
                 preview,
                 text: Some(text),
                 image: None,
+                files: None,
+            },
+            ClipboardCapture::Files { hash, paths } => ClipboardHistoryItem {
+                id: create_item_id(now, &hash),
+                kind: ClipboardHistoryItemKind::Text,
+                hash,
+                created_at: now,
+                copied_at: now,
+                favorite: false,
+                note: String::new(),
+                preview: files_preview(&paths),
+                text: Some(paths.join("
+")),
+                image: None,
+                files: Some(paths),
             },
             ClipboardCapture::Image {
                 hash,
                 width,
                 height,
                 rgba,
+                files,
             } => {
                 let image = self.persist_image(&hash, width, height, rgba)?;
                 ClipboardHistoryItem {
@@ -344,6 +384,7 @@ impl ClipboardHistoryService {
                     preview: format!("{width} x {height} image"),
                     text: None,
                     image: Some(image),
+                    files,
                 }
             }
         };
@@ -375,8 +416,9 @@ impl ClipboardHistoryService {
         let thumbnail = make_thumbnail(&rgba_image);
         let thumbnail_bytes = encode_png(&thumbnail)?;
         let safe_hash = hash.chars().take(24).collect::<String>();
-        let original_path = self.image_dir.join(format!("{safe_hash}.png"));
-        let thumbnail_path = self.image_dir.join(format!("{safe_hash}-thumb.png"));
+        let image_dir = self.image_dir();
+        let original_path = image_dir.join(format!("{safe_hash}.png"));
+        let thumbnail_path = image_dir.join(format!("{safe_hash}-thumb.png"));
 
         fs::write(&original_path, &original_bytes)
             .map_err(|error| format!("Failed to write clipboard image: {error}"))?;
@@ -416,14 +458,15 @@ impl ClipboardHistoryService {
         };
         let content = serde_json::to_string_pretty(&history)
             .map_err(|error| format!("Failed to serialize clipboard history: {error}"))?;
-        fs::write(&self.history_path, content)
+        fs::write(self.history_path(), content)
             .map_err(|error| format!("Failed to write clipboard history: {error}"))
     }
 
     fn remove_item_files(&self, item: &ClipboardHistoryItem) {
         if let Some(image) = &item.image {
+            let image_dir = self.image_dir();
             for path in [&image.original_path, &image.thumbnail_path] {
-                if let Ok(path) = super::image_access::managed_path(&self.image_dir, path) {
+                if let Ok(path) = super::image_access::managed_path(&image_dir, path) {
                     let _ = fs::remove_file(path);
                 }
             }
@@ -451,13 +494,25 @@ impl ClipboardHistoryService {
 impl ClipboardCapture {
     fn hash(&self) -> &str {
         match self {
-            Self::Text { hash, .. } | Self::Image { hash, .. } => hash,
+            Self::Text { hash, .. } | Self::Image { hash, .. } | Self::Files { hash, .. } => hash,
         }
     }
 }
 
 fn read_clipboard_capture(capture_images: bool) -> Result<Option<ClipboardCapture>, String> {
     let mut clipboard = Clipboard::new().map_err(|error| error.to_string())?;
+
+    // Files first: Explorer puts only CF_HDROP, but some programs add paths alongside image data.
+    if let Ok(files) = clipboard.get().file_list() {
+        let paths: Vec<String> = files.iter().map(|path| path.to_string_lossy().to_string()).filter(|path| !path.is_empty()).collect();
+        if !paths.is_empty() {
+            if let Some(capture) = capture_image_files(&mut clipboard, &paths, capture_images) {
+                return Ok(Some(capture));
+            }
+            let hash = hash_file_paths(&paths);
+            return Ok(Some(ClipboardCapture::Files { hash, paths }));
+        }
+    }
 
     if let Ok(text) = clipboard.get_text() {
         if !text.trim().is_empty() {
@@ -483,11 +538,68 @@ fn read_clipboard_capture(capture_images: bool) -> Result<Option<ClipboardCaptur
                 width: image.width,
                 height: image.height,
                 rgba: image.bytes.into_owned(),
+                files: None,
             }));
         }
     }
 
     Ok(None)
+}
+
+const IMAGE_FILE_EXTENSIONS: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
+
+fn hash_file_paths(paths: &[String]) -> String {
+    hash_bytes([b"files:", paths.join("\r\n").as_bytes()].concat().as_slice())
+}
+
+/// A file-list capture is shown as an image only when it is one bounded image file: several
+/// files would show one picture for all of them, so they stay a file item.
+fn image_file_list_is_valid(paths: &[String]) -> bool {
+    paths.len() == 1
+        && paths.iter().all(|path| {
+            let path = Path::new(path);
+            let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
+                return false;
+            };
+            let is_image_extension = IMAGE_FILE_EXTENSIONS
+                .iter()
+                .any(|allowed| extension.eq_ignore_ascii_case(allowed));
+            is_image_extension
+                && fs::metadata(path).is_ok_and(|metadata| {
+                    metadata.is_file() && metadata.len() <= MAX_IMAGE_PNG_BYTES as u64
+                })
+        })
+}
+
+fn capture_image_files(
+    clipboard: &mut Clipboard,
+    paths: &[String],
+    capture_images: bool,
+) -> Option<ClipboardCapture> {
+    if !capture_images || !image_file_list_is_valid(paths) {
+        return None;
+    }
+
+    let image = clipboard
+        .get()
+        .image()
+        .ok()
+        .map(|image| (image.width, image.height, image.bytes.into_owned()))
+        .or_else(|| load_image_file(paths.first()?));
+    let (width, height, rgba) = image?;
+
+    Some(ClipboardCapture::Image {
+        hash: hash_file_paths(paths),
+        width,
+        height,
+        rgba,
+        files: Some(paths.to_vec()),
+    })
+}
+
+fn load_image_file(path: &str) -> Option<(usize, usize, Vec<u8>)> {
+    let image = ImageReader::open(path).ok()?.decode().ok()?.to_rgba8();
+    Some((image.width() as usize, image.height() as usize, image.into_raw()))
 }
 
 fn write_clipboard_text(text: &str) -> Result<(), String> {
@@ -497,6 +609,27 @@ fn write_clipboard_text(text: &str) -> Result<(), String> {
             .set_text(text.to_owned())
             .map_err(|error| format!("Failed to set clipboard text: {error}"))
     })
+}
+
+fn write_clipboard_files(paths: &[String]) -> Result<(), String> {
+    let paths: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
+    retry_clipboard_write("set clipboard files", || {
+        Clipboard::new()
+            .map_err(|error| format!("Failed to open clipboard: {error}"))?
+            .set()
+            .file_list(&paths)
+            .map_err(|error| format!("Failed to set clipboard files: {error}"))
+    })
+}
+
+/// "report.docx", or "report.docx and 2 more" in the language-neutral form the row shows
+/// next to its file icon: names only, as the full paths stay searchable in `text`.
+fn files_preview(paths: &[String]) -> String {
+    let names: Vec<String> = paths
+        .iter()
+        .map(|path| std::path::Path::new(path).file_name().map_or_else(|| path.clone(), |name| name.to_string_lossy().to_string()))
+        .collect();
+    preview_text(&names.join(", "))
 }
 
 fn write_clipboard_image(width: usize, height: usize, image: &RgbaImage) -> Result<(), String> {
@@ -509,6 +642,29 @@ fn write_clipboard_image(width: usize, height: usize, image: &RgbaImage) -> Resu
                 bytes: Cow::Owned(image.as_raw().clone()),
             })
             .map_err(|error| format!("Failed to set clipboard image: {error}"))
+    })
+}
+
+fn write_clipboard_image_with_files(
+    width: usize,
+    height: usize,
+    image: &RgbaImage,
+    files: &[String],
+) -> Result<(), String> {
+    retry_clipboard_write("set clipboard image and files", || {
+        Clipboard::new()
+            .map_err(|error| format!("Failed to open clipboard: {error}"))?
+            .set_image(ImageData {
+                width,
+                height,
+                bytes: Cow::Owned(image.as_raw().clone()),
+            })
+            .map_err(|error| format!("Failed to set clipboard image: {error}"))?;
+
+        let _clipboard = clipboard_win::Clipboard::new_attempts(10)
+            .map_err(|error| format!("Failed to open clipboard for files: {error}"))?;
+        clipboard_win::raw::set_file_list(files)
+            .map_err(|error| format!("Failed to set clipboard files: {error}"))
     })
 }
 
@@ -574,7 +730,7 @@ pub(super) fn notify_clipboard_changed() {
 }
 
 fn run_windows_clipboard_listener() -> Result<(), String> {
-    let class_name = "FocuSDClipboardHistoryListener";
+    let class_name = "Fly IslandClipboardHistoryListener";
     let instance = message_window::module_instance().map_err(|error| error.to_string())?;
 
     if message_window::register_class::<ClipboardWindow>(instance, class_name).is_err() {
@@ -584,7 +740,7 @@ fn run_windows_clipboard_listener() -> Result<(), String> {
     let hwnd = message_window::create_message_only_window(
         instance,
         class_name,
-        "FocuSD Clipboard History Listener",
+        "Fly Island Clipboard History Listener",
     )
     .map_err(|error| error.to_string())?;
 
@@ -630,3 +786,7 @@ impl WindowMessages for ClipboardWindow {
         None
     }
 }
+
+#[cfg(test)]
+#[path = "service_tests.rs"]
+mod tests;

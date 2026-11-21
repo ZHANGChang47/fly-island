@@ -8,8 +8,9 @@ import type { IslandPage } from "./types";
 // The shelf page fits what it holds (FileShelfPanel.css, FileShelfItem.css, FileShelfBar.css):
 // the island's padding, header and gap (86) around the panel's padding (22); then one 118px row
 // of tiles for up to four files, or rows of 44px 6px apart in two columns, five rows at most
-// before it scrolls; and the 8px gap and 28px line under them. Empty, a 136px space for the
-// fanned files and their two lines. Keep in step.
+// before it scrolls, with the 8px gap and 28px line under the rows (one row of tiles has no line:
+// Clear floats in the panel's corner). Empty, a 136px space for the fanned files and their two
+// lines. Keep in step.
 const SHELF_ISLAND_CHROME = 86;
 const SHELF_PANEL_PADDING = 22;
 const SHELF_TILE_ROW = 118;
@@ -23,7 +24,7 @@ export function getShelfExpandedHeight(items: number) {
   const layout = getShelfLayout(items);
   const content = layout === "empty"
     ? SHELF_EMPTY
-    : (layout === "rows" ? Math.min(SHELF_MAX_ROWS, Math.ceil(items / 2)) * SHELF_ROW_PITCH - 6 : SHELF_TILE_ROW) + SHELF_BAR;
+    : layout === "rows" ? Math.min(SHELF_MAX_ROWS, Math.ceil(items / 2)) * SHELF_ROW_PITCH - 6 + SHELF_BAR : SHELF_TILE_ROW;
   return SHELF_ISLAND_CHROME + SHELF_PANEL_PADDING + content;
 }
 // Header, direction bar, a few lines of source, the result and the action row.
@@ -55,6 +56,8 @@ type ExpandedHeightInput = {
   isReadingMail: boolean;
   maxPanelHeight: number;
   clipboardVisibleRows: number;
+  /** Rows the todo list shows before it scrolls (Settings → Todos). */
+  todoVisibleRows?: number;
   agentVisibleRows: number;
   /** How the Agent page shows sessions (Settings); each view has its own row height. */
   agentSessionView?: AgentSessionView;
@@ -85,6 +88,7 @@ export function getExpandedIslandHeight({
   isReadingMail,
   maxPanelHeight,
   clipboardVisibleRows,
+  todoVisibleRows = 8,
   agentVisibleRows,
   agentSessionView = "list",
   fontScale = 1,
@@ -105,7 +109,10 @@ export function getExpandedIslandHeight({
       1,
     ),
     getTodoScrollStartRows(maxPanelHeight),
+    todoVisibleRows,
   );
+  // The tallest the plain todo list grows: its visible rows, within the panel height limit.
+  const todoListMax = Math.min(maxPanelHeight, BASE_EXPANDED_ISLAND_HEIGHT + Math.max(0, todoVisibleRows - TODO_GROW_START_ROWS) * TODO_ROW_HEIGHT);
 
   return page === "settings"
     ? getSettingsExpandedHeight(settingsContentHeight)
@@ -116,7 +123,7 @@ export function getExpandedIslandHeight({
       ? TODO_ARCHIVE_EXPANDED_ISLAND_HEIGHT
       : todoPageMode === "daily"
         ? DAILY_NOTE_EXPANDED_ISLAND_HEIGHT
-      : Math.min(maxPanelHeight, BASE_EXPANDED_ISLAND_HEIGHT + (todoListHeight === null
+      : Math.min(todoListMax, BASE_EXPANDED_ISLAND_HEIGHT + (todoListHeight === null
         ? Math.max(0, visibleTodoRows - TODO_GROW_START_ROWS) * TODO_ROW_HEIGHT
         : Math.max(0, todoListHeight - (TODO_GROW_START_ROWS * TODO_ROW_HEIGHT - 6))))
     : page === "music"

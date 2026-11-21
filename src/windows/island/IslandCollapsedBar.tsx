@@ -11,17 +11,20 @@ import { CollapsedLyric } from "../../features/media/CollapsedLyric";
 import type { LyricsSettings } from "../../features/media/lyrics/useLyrics";
 import { CollapsedMessageContent } from "../../features/messages/CollapsedMessageContent";
 import { MessageSourceIcon } from "../../features/messages/MessageSourceIcon";
+import { MessageNoticeReader } from "../../features/messages/MessageNoticeReader";
 // After CollapsedMessageContent, matching the original stylesheet order.
 import { MusicWaveButton } from "../../features/media/MusicWaveButton";
-import { messagePreviewText, type MessagePreview, type MessageSource } from "../../features/messages/messagePreview";
+import { isOfficeSource, messagePreviewText, type MessagePreview, type MessageSource } from "../../features/messages/messagePreview";
+import { openOfficeClient } from "../../features/messages/office-im/useOfficeIm";
 import type { MailController } from "../../features/messages/mail/MailPanel";
 import { MailOtpCode } from "../../features/messages/mail/MailOtpCode";
 import type { QQNotificationsController } from "../../features/messages/qq-notifications/QQNotifications";
 import type { WeChatRemindersController } from "../../features/messages/wechat/WeChatReminders";
+import { CollapsedClock, CollapsedWeather, useClockWeather, useCurrentWeather } from "../../features/weather";
 import { useTranslation } from "../../i18n";
 import { TodoCountdown } from "../../features/todos/TodoCountdown";
 import { useUpdatePending } from "../../features/updater/useUpdatePending";
-import type { TodoTimer } from "../../features/todos/timer";
+import { isTodoTimerEndingSoon, type TodoTimer } from "../../features/todos/timer";
 import { CollapsedTodoContent, type TodoRotationDisplay } from "./CollapsedTodoContent";
 import type { IslandPage } from "./types";
 import { useWindowDragGesture } from "./useWindowDragGesture";
@@ -32,6 +35,8 @@ type IslandCollapsedBarProps = {
   qqNotifications: QQNotificationsController;
   wechatReminders: WeChatRemindersController;
   preview: MessagePreview | null;
+  /** The adaptive preview's reader (sender, then the whole text) in place of the bar, or null. */
+  noticeReader?: { scrolls: boolean } | null;
   page: IslandPage;
   isExpanded: boolean;
   isTucked: boolean;
@@ -63,6 +68,7 @@ type IslandCollapsedBarProps = {
   shelfCount: number | null;
   /** Claude's or Codex's usage reaching the alert level, or resetting; it takes the place of the text while shown. */
   quotaAlert?: QuotaAlert | null;
+  /** A todo round reaching its reminder before the end; it takes the place of the text while shown. */
   agentVisualState: AgentVisualState;
   onOpenPage: (page: IslandPage) => void;
   onOpenMessages: (source: MessageSource) => void;
@@ -77,6 +83,7 @@ export function IslandCollapsedBar({
   qqNotifications,
   wechatReminders,
   preview,
+  noticeReader = null,
   page,
   isExpanded,
   isTucked,
@@ -105,6 +112,9 @@ export function IslandCollapsedBar({
   onTuck,
 }: IslandCollapsedBarProps) {
   const t = useTranslation();
+  const clockWeather = useClockWeather();
+  const weatherOn = clockWeather.installed && clockWeather.settings.showWeather && collapsedLayout.includes("weather");
+  const weather = useCurrentWeather(weatherOn, clockWeather.settings.location);
   // A pending update shows a red dot even collapsed, so it is not missed.
   const updatePending = useUpdatePending();
   const { didDragRef, prepareWindowDrag, handleWindowDragMove, cancelWindowDrag } =
@@ -115,9 +125,59 @@ export function IslandCollapsedBar({
     `island__pulse--agent-${agentVisualState}`,
   ].join(" ");
   const shownAgent = collapsedItem === "agent" ? agentSession : null;
+  // Opens where the previewed message lives: the mail reader, or QQ / WeChat (else their page).
+  const openPreview = (shown: MessagePreview) => {
+    const source = shown.source;
+    if (source === "plugin") { onOpenMessages(source); return; }
+    if (isOfficeSource(source)) {
+      void openOfficeClient(source).catch(() => onOpenMessages(source));
+      return;
+    }
+    if (source === "qqMail" && qqMail.preview) {
+      onOpenMessages("qqMail");
+      void qqMail.readMail(qqMail.preview, qqMail.previewAccount);
+      return;
+    }
+    const opening = source === "qq"
+      ? qqNotifications.openQQ(shown.title)
+      : wechatReminders.openWeChat(shown.wechatMessageId);
+    void opening.then((opened) => {
+      if (opened === false) onOpenMessages(source);
+    });
+  };
+
+  if (noticeReader && preview && !isExpanded && !isTucked) return (
+    <div className="island__collapsed island__collapsed--notice">
+      <MessageNoticeReader preview={preview} scrolls={noticeReader.scrolls} onOpen={() => openPreview(preview)}
+        onRetry={qqMail.retryPreviewContent}
+        drag={{ onPointerDown: prepareWindowDrag, onPointerMove: handleWindowDragMove, onPointerUp: cancelWindowDrag, onPointerCancel: cancelWindowDrag }} />
+    </div>
+  );
 
   // The text and the status icons, placed in the order Settings → Appearance arranged.
   const slots: Record<CollapsedSlot, ReactNode> = {
+    // The agent light opens the Agent page (or the message being previewed); the text reopens the last page.
+    pulse: (
+      <button
+        className="island__agent-light"
+        type="button"
+        aria-label={preview ? t.messages.openPreview(messagePreviewText(preview, t.messages), t.messages.sourceLabels[preview.source]) : t.island.agentPage}
+        onPointerDown={prepareWindowDrag}
+        onPointerMove={handleWindowDragMove}
+        onPointerUp={cancelWindowDrag}
+        onPointerCancel={cancelWindowDrag}
+        onClick={(event) => {
+          if (event.detail !== 0 && didDragRef.current) return;
+          event.stopPropagation();
+          if (preview) openPreview(preview); else onOpenPage("agents");
+        }}
+      >
+        <span className={pulseClassName} />
+      </button>
+    ),
+    clock: clockWeather.installed && clockWeather.settings.showClock && <CollapsedClock active={!isExpanded && !isTucked} />,
+    weather: weatherOn && weather && clockWeather.settings.location
+      ? <CollapsedWeather location={clockWeather.settings.location} reading={weather} /> : null,
     text: (
       <div className="island__text-slot">
         <button
@@ -135,35 +195,13 @@ export function IslandCollapsedBar({
           onClick={(event) => {
             if (event.detail === 0 || !didDragRef.current) {
               if (preview) {
-                const source = preview.source;
-                if (source === "qqMail" && qqMail.preview) {
-                  onOpenMessages("qqMail");
-                  void qqMail.readMail(qqMail.preview, qqMail.previewAccount);
-                  return;
-                }
-                const opening = source === "qq"
-                  ? qqNotifications.openQQ(preview.title)
-                  : wechatReminders.openWeChat(preview.wechatMessageId);
-                void opening.then((opened) => {
-                  if (opened === false) onOpenMessages(source);
-                });
+                openPreview(preview);
               } else {
                 onOpenPage(page);
               }
             }
           }}
         >
-          {/* The agent light opens the Agent page; the text beside it reopens the last page. */}
-          <span
-            className="island__agent-light"
-            onClick={(event) => {
-              if (preview || (event.detail !== 0 && didDragRef.current)) return;
-              event.stopPropagation();
-              onOpenPage("agents");
-            }}
-          >
-            <span className={pulseClassName} />
-          </span>
           {updatePending && <span className="island-update-dot island-update-dot--inline" aria-hidden="true" />}
           {collapsedCover && <img className="collapsed-cover" src={collapsedCover} alt="" draggable={false} />}
           <CollapsedMessageContent preview={preview} enabled={!isExpanded && !isTucked}>
@@ -188,12 +226,12 @@ export function IslandCollapsedBar({
               <CollapsedLyric mediaState={mediaState} lyricsSettings={lyricsSettings} active={!isExpanded} />
             )}
             {showCollapsedText && collapsedItem === "todo" && collapsedTaskTitle && (todoTimer && !todoRotation ? (
-              <span className="island__active-task island__active-task--timed" key={collapsedTaskTitle}>
+              <span className={`island__active-task island__active-task--timed${isTodoTimerEndingSoon(todoTimer) ? " island__active-task--ending" : ""}`} key={collapsedTaskTitle}>
                 {showTitle ? "· " : ""}
                 <>
                   <span className="island__active-task-title">{collapsedTaskTitle}</span>
                   <span className="island__timer-pill">
-                    {todoTimer.notified ? t.todo.timeUp : <TodoCountdown endsAt={todoTimer.endsAt} />}
+                    {todoTimer.notified ? t.todo.timeUp : <TodoCountdown endsAt={todoTimer.endsAt} warning={isTodoTimerEndingSoon(todoTimer)} />}
                   </span>
                 </>
               </span>

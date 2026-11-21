@@ -3,7 +3,7 @@ import type { AgentQuotaSource, AgentSessionGroup, AgentSessionSort, CollapsedIt
 
 export const AGENT_SESSION_SORTS: readonly AgentSessionSort[] = ["status", "recent", "firstSeen"];
 export const AGENT_SESSION_GROUPS: readonly AgentSessionGroup[] = ["computer", "project", "none"];
-export const AGENT_QUOTA_SOURCES: readonly AgentQuotaSource[] = ["claudeCode", "codex", "dsh", "workbuddy"];
+export const AGENT_QUOTA_SOURCES: readonly AgentQuotaSource[] = ["claudeCode", "codex", "dsh", "workbuddy", "kimiCode", "zcode"];
 /** Choices for how far back the Agent page lists sessions, in hours. */
 export const AGENT_SESSION_HOURS = [1, 2, 6, 24] as const;
 /** How long a page opened for an agent alert stays, in seconds. */
@@ -37,15 +37,35 @@ export const TUCK_DELAY_SECONDS = { min: 3, max: 600, default: 30 } as const;
 export const TODO_ROTATION_SECONDS = { min: 1, max: 60, default: 5 } as const;
 export const TODO_SCROLL_SPEED = { min: 10, max: 40, step: 5, default: 20 } as const;
 export const MESSAGE_PREVIEW_SECONDS = { min: 3, max: 30, step: 1, default: 5 } as const;
+/** Adaptive message previews (messageAutoExpand): the largest size, before scale, and how long one stays. */
+export const MESSAGE_EXPAND_MAX_WIDTH = { min: 320, max: 720, step: 20, default: 520 } as const;
+export const MESSAGE_EXPAND_MAX_HEIGHT = { min: 80, max: 360, step: 10, default: 180 } as const;
+export const MESSAGE_EXPAND_SECONDS = { min: 3, max: 60, step: 1, default: 12 } as const;
+/** How long a message preview stays while game mode is quiet (gameShowNotices). */
+export const GAME_NOTICE_SECONDS = { min: 2, max: 30, step: 1, default: 4 } as const;
 /** Auto-cleanup choices for the file shelf, in days; 0 never cleans up. */
 export const SHELF_CLEANUP_DAYS = [0, 1, 7, 30] as const;
 export const DEFAULT_TASK_TEXT_COLOR = "#FFFFFF";
 
 export const ISLAND_FONT_PERCENT = { min: 90, max: 120, step: 5, default: 100 } as const;
 export const COLLAPSED_WIDTH = { min: 240, max: 480, default: 340 } as const;
-export const COLLAPSED_HEIGHT = { min: 32, max: 60, default: 38 } as const;
+// The floor was 32 until 2026-11-19 (用户要求最小值 26px); Rust clamps to the same range (geometry.rs).
+export const COLLAPSED_HEIGHT = { min: 26, max: 60, default: 38 } as const;
+/** The collapsed island's side space; 18 is what it always was. */
+export const COLLAPSED_PADDING = { min: 4, max: 32, default: 18 } as const;
 // Optional top-edge shoulder strength, before the island scale is applied.
 export const TOP_EDGE_SHOULDER_SIZE = { min: 4, max: 20, default: 10 } as const;
+// Bottom corner radius of the expanded island (Appearance → Notch & shape); Rust accepts 8–96
+// (MIN_CORNER_RADIUS / MAX_CORNER_RADIUS in src-tauri/src/island/geometry.rs).
+export const ISLAND_CORNER_RADIUS = { min: 8, max: 96, default: DEFAULT_ISLAND_CORNER_RADIUS } as const;
+// The collapsed bar's corners (2026-11-18, set apart from the open island's). The default is what
+// the old 12 / 30 ratio drew from the default open radius, so the island looks as it did.
+export const COLLAPSED_CORNER_RADIUS = { min: 0, max: 40, default: (DEFAULT_ISLAND_CORNER_RADIUS * 12) / 30, step: 0.1 } as const;
+// The glass's blur of what is behind it, 30 to 100: below 30 the backdrop was nearly sharp and the
+// text hard to read (2026-11-18, owner). Older settings under 30 read back as 30.
+export const GLASS_BLUR = { min: 30, max: 100, default: 60 } as const;
+// Px of the island the "edge" tuck leaves on screen; Rust accepts 3–20 (geometry.rs). 10 was fixed before.
+export const TUCK_EDGE_HEIGHT = { min: 3, max: 20, default: 10 } as const;
 export const MIN_COLLAPSED_SCALE = 0.75;
 export const MAX_COLLAPSED_SCALE = 1.4;
 
@@ -70,9 +90,9 @@ export function normalizeExpandedScale(value: unknown) {
 
 /** The collapsed island's items, in their default order: a running agent, then lyrics, then todos. */
 export const COLLAPSED_ITEMS: readonly CollapsedItem[] = ["agent", "lyrics", "todo"];
-/** The collapsed island's layout as it always was: the text, then the icons on its right. */
-export const COLLAPSED_SLOTS: readonly CollapsedSlot[] = ["text", "mail", "shelf", "music", "agents"];
-/** The header's page dots in their default order; translation joined last (2026-11-11), search before it (2026-11-17). */
+/** The collapsed island's layout as it always was: the light and the text, then the icons on its right. */
+export const COLLAPSED_SLOTS: readonly CollapsedSlot[] = ["pulse", "text", "mail", "shelf", "music", "agents", "clock", "weather"];
+/** The header's page dots in their default order; search (local) before translation. */
 export const PAGE_DOTS: readonly PageDot[] = ["todo", "music", "clipboard", "shelf", "search", "translation"];
 
 /** `value` when it is one of `allowed`, else `fallback`: a saved choice from an older or newer build. */
@@ -81,4 +101,6 @@ export function oneOf<T>(allowed: readonly T[], value: unknown, fallback: T): T 
 }
 
 // Clipboard: rows visible in the island before the list scrolls.
+// 8 is what the default panel height limit (490) already fitted, so nothing changes until it is set.
+export const TODO_VISIBLE_ROWS = { min: 3, max: 12, default: 8 } as const;
 export const CLIPBOARD_VISIBLE_ROWS = { min: 3, max: 8, default: DEFAULT_CLIPBOARD_VISIBLE_ROWS } as const;

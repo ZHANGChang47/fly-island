@@ -1,0 +1,87 @@
+import type { CSSProperties } from "react";
+import { Check } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+  NATIVE_PLUGINS, NativePluginIcon, setNativePluginEnabled, setNativePluginInstalled, useNativePluginStates, type NativePluginId,
+} from "../../features/plugins";
+import { SettingsSwitch } from "../../components/settings/SettingsSwitch";
+import { NATIVE_AGENTS } from "../../features/agent-status/nativeAgents";
+import { OFFICE_SOURCES } from "../../features/messages/messagePreview";
+import { useOfficeImEnabled } from "../../features/messages/office-im/useOfficeIm";
+import type { IslandSettings } from "../../features/appearance/types";
+import { setClockWeatherSettings } from "../../features/weather";
+import { useTranslation } from "../../i18n";
+import "./PluginMarket.css";
+
+type PluginMarketProps = { settings: IslandSettings; onSettingsChange: (settings: IslandSettings) => void };
+
+/** The built-in plugins as square cards: icon with name and author beside it, a short pitch and installation controls. */
+export function PluginMarket({ settings, onSettingsChange }: PluginMarketProps) {
+  const t = useTranslation().settings.plugins.market;
+  const { installed, enabled } = useNativePluginStates();
+  const [, setOfficeEnabled] = useOfficeImEnabled();
+  // Installing is asking for it: its own switch (Messages / Agent settings) goes on with it. A switch
+  // left off from before, or turned off and forgotten, kept an installed plugin off the island
+  // with nothing there to say why (2026-11-19, owner: 钉钉装好后岛上没有).
+  const install = (id: NativePluginId) => {
+    if (id === "clockWeather") setClockWeatherSettings({ showClock: true, showWeather: true });
+    const office = OFFICE_SOURCES.find((source) => source === id);
+    if (office) setOfficeEnabled(office, true);
+    const agent = NATIVE_AGENTS.find((item) => item.id === id);
+    if (agent) {
+      // Its quota ring too, like the built-in agents' rings that start ticked.
+      const ring = agent.id === "kimiCode" || agent.id === "zcode" ? agent.id : null;
+      const quota = ring !== null && !settings.agentQuotaSources.includes(ring);
+      if (!settings[agent.setting] || quota) {
+        onSettingsChange({ ...settings, [agent.setting]: true, ...(quota ? { agentQuotaSources: [...settings.agentQuotaSources, ring] } : {}) });
+      }
+    }
+    setNativePluginInstalled(id, true);
+  };
+  return <section className="plugin-market" aria-label={t.title}>
+    <header className="plugin-market__header">
+      <p className="plugin-market__hint">{t.hint}</p>
+    </header>
+    <ul className="plugin-market__grid">
+      {NATIVE_PLUGINS.map(({ id, accent, author }) => {
+        const item = t.items[id];
+        const isInstalled = installed[id];
+        const isEnabled = enabled[id];
+        const stateClass = isInstalled ? ` plugin-card--installed${isEnabled ? "" : " plugin-card--disabled"}` : "";
+        return <li key={id} className={`plugin-card${stateClass}`} style={{ "--plugin-accent": accent } as CSSProperties}>
+          <div className="plugin-card__top">
+            <span className="plugin-card__icon">
+              <NativePluginIcon id={id} size={44} className="plugin-card__tile" />
+              {isInstalled && <span className="plugin-card__check" aria-hidden="true"><Check size={10} strokeWidth={3} /></span>}
+            </span>
+            <div className="plugin-card__heading">
+              <h3 className="plugin-card__name">{item.name}</h3>
+              <p className="plugin-card__author">
+                {t.by}{" "}
+                <a className="plugin-card__author-link" href={author.url}
+                  onClick={(event) => { event.preventDefault(); void openUrl(author.url).catch(console.error); }}>@{author.name}</a>
+              </p>
+            </div>
+          </div>
+          <p className="plugin-card__description">{item.description}</p>
+          <div className="plugin-card__footer">
+            {isInstalled && <SettingsSwitch
+              size="small"
+              ariaLabel={t.enableNamed(item.name)}
+              checked={isEnabled}
+              onChange={(checked) => setNativePluginEnabled(id, checked)}
+            />}
+            <button
+              type="button"
+              className={`plugin-card__action${isInstalled ? " plugin-card__action--remove" : ""}`}
+              aria-label={isInstalled ? t.uninstallNamed(item.name) : t.installNamed(item.name)}
+              onClick={() => isInstalled ? setNativePluginInstalled(id, false) : install(id)}
+            >
+              {isInstalled ? <><span className="plugin-card__state">{t.installed}</span><span className="plugin-card__remove">{t.uninstall}</span></> : t.install}
+            </button>
+          </div>
+        </li>;
+      })}
+    </ul>
+  </section>;
+}

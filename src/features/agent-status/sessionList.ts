@@ -1,5 +1,5 @@
 import type { AgentSessionGroup, AgentSessionSort } from "../appearance/types";
-import type { AgentSessionSummary } from "./api";
+import type { AgentSessionSummary, NativeAgentProvider } from "./api";
 import { sessionLight, type SessionLight } from "./sessionLight.ts";
 import { sessionKey } from "./unseen.ts";
 
@@ -40,12 +40,25 @@ export function uniqueSessions(sessions: AgentSessionSummary[]) {
   return newest.size === sessions.length ? sessions : sessions.filter((session) => newest.get(sessionKey(session)) === session);
 }
 
-/** Sessions still working: running, waiting for the user, or silent mid-turn for a while (stale). */
+/** Sessions still working: running, waiting for the user, silent mid-turn for a while (stale), or finished with background tasks still running. */
 export function countActiveSessions(sessions: AgentSessionSummary[]) {
-  return sessions.filter((session) => isActivePhase(session.phase)).length;
+  return sessions.filter(isSessionActive).length;
 }
 
-export type SessionFilter = { claudeCode: boolean; codex: boolean; dsh?: boolean; workbuddy?: boolean; plugin?: boolean };
+/**
+ * A turn that ended while background tasks it started (a background command or subagent) still
+ * run: the agent is still at work, so the island names it, counts it and stays out.
+ */
+export function hasBackgroundWork(session: { phase: string; backgroundTasks?: number }) {
+  return session.phase === "completed" && (session.backgroundTasks ?? 0) > 0;
+}
+
+/** The one judgement of "still working" the collapsed title, the count and keep-visible share. */
+export function isSessionActive(session: Pick<AgentSessionSummary, "phase" | "backgroundTasks">) {
+  return isActivePhase(session.phase) || hasBackgroundWork(session);
+}
+
+export type SessionFilter = { claudeCode: boolean; codex: boolean; dsh?: boolean; workbuddy?: boolean; plugin?: boolean } & Partial<Record<NativeAgentProvider, boolean>>;
 
 /** Sessions of the agents the user wants to see. */
 export function filterSessions(sessions: AgentSessionSummary[], filter: SessionFilter) {

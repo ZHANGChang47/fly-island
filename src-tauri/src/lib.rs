@@ -1,7 +1,9 @@
 mod agent_approval;
+mod app_log;
 mod agent_status;
 mod clipboard_history;
 mod clipboard_window;
+mod config_transfer;
 mod file_search;
 mod file_preview;
 mod file_shelf;
@@ -11,6 +13,7 @@ mod island;
 mod lyrics;
 mod media_control;
 mod media_plugins;
+mod legacy_migration;
 mod plugin_host;
 mod release_flags;
 mod messenger_activation;
@@ -21,6 +24,8 @@ mod settings_window;
 mod system;
 mod translation;
 mod tray;
+mod office_im;
+mod weather;
 mod wechat_reminders;
 mod win32;
 
@@ -38,14 +43,21 @@ macro_rules! collect_commands {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Migrate the old app-data roots before Tauri creates its first WebView; if that fails, stop
+    // here rather than let Tauri create empty new ones (the next launch retries).
+    if !legacy_migration::run() {
+        return;
+    }
+    system::startup::note_launch();
     media_plugins::handle_startup();
+    agent_status::uninstall::handle_startup();
     let mut context = tauri::generate_context!();
     if let Some(identifier) = notification_diagnostics::verification_identifier() {
         context.config_mut().identifier = identifier;
     }
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            let _ = island::show_island(app);
+            tray::on_relaunch(app);
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -69,6 +81,9 @@ pub fn run() {
             // changes. Liquid glass is rendered inside the island element.
         })
         .setup(|app| {
+            config_transfer::prepare(app.handle());
+            // First, so whatever goes wrong while the rest starts is in the log.
+            app_log::init(app.handle());
             tray::build_tray(app)?;
             if let Err(error) = clipboard_history::init(app.handle()) {
                 eprintln!("failed to initialize clipboard history: {error}");
@@ -95,6 +110,9 @@ pub fn run() {
             if let Err(error) = wechat_reminders::init(app.handle()) {
                 eprintln!("failed to initialize WeChat reminders: {error}");
             }
+            if let Err(error) = office_im::init(app.handle()) {
+                eprintln!("failed to initialize office reminders: {error}");
+            }
             if let Err(error) = notification_diagnostics::start(app.handle()) {
                 eprintln!("failed to initialize notification diagnostics: {error}");
             }
@@ -120,6 +138,9 @@ pub fn run() {
                 eprintln!("failed to initialize plugins: {error}");
             }
             agent_status::reply_marker::init();
+            agent_status::workbuddy_connection::init(app.handle());
+            agent_status::hook_migration::repair_legacy_hooks(app.handle());
+            system::startup::upgrade_legacy_value();
             Ok(())
         })
         .invoke_handler(collect_commands!([]
@@ -130,6 +151,7 @@ pub fn run() {
             file_shelf;
             mail;
             wechat_reminders;
+            office_im;
             qq_notifications;
             island;
             system;
@@ -142,7 +164,11 @@ pub fn run() {
             clipboard_history;
             translation;
             settings_window
+            ; tray
             ; clipboard_window
+            ; app_log
+            ; config_transfer
+            ; weather
         ))
         .build(context)
         .map(|app| {

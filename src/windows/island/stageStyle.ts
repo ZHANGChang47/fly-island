@@ -15,6 +15,8 @@ export function getIslandStageStyle(
   colors: ColorPalette,
   collapsedIslandWidth: number,
   expandedIslandHeight: number,
+  /** A message preview's grown height (useMessageNotice) in place of the collapsed height. */
+  noticeHeight: number | null = null,
 ) {
   return ({
     // Classic opacity fades the fill only, so text and icons on it stay solid.
@@ -24,13 +26,16 @@ export function getIslandStageStyle(
     "--island-collapsed-scale-target": settings.collapsedScale,
     "--island-expanded-scale-target": settings.expandedScale,
     "--collapsed-island-width": `${collapsedIslandWidth}px`,
-    "--collapsed-island-height": `${settings.collapsedHeight}px`,
+    "--collapsed-island-height": `${noticeHeight ?? settings.collapsedHeight}px`,
+    "--collapsed-island-padding": `${settings.collapsedPadding}px`,
     "--expanded-island-height": `${expandedIslandHeight}px`,
     "--island-font-scale": settings.islandFontPercent / 100,
     // Unitless; IslandShell.css derives the collapsed, detached and inner panel radii from it.
     "--island-corner-radius-size": settings.islandCornerRadius,
+    "--island-collapsed-corner-radius-size": settings.collapsedCornerRadius,
     // The corner-shape of the island and every layer that inherits its radius (IslandShell.css).
     "--island-corner-shape": cornerShapeCss(settings.islandCornerShape),
+    "--island-shoulder-size-factor": settings.islandCornerShape === "squircle" ? 1.4 : 1,
     "--island-shoulder-size-target": `${settings.topEdgeShoulderSize}px`,
     // The expanded page's resting transform. At scale 1 it is none: a transform, even scale(1), keeps
     // the page on its own compositing layer, and the text there is drawn again once the layer goes.
@@ -45,8 +50,17 @@ export function getIslandStageStyle(
     "--island-ink-rgb": inkOn(colors.islandBackgroundColor),
     ...pageInkStyle(settings.pageTextColor),
     ...(isGlass(settings.material) ? getGlassStyle(settings, colors) : {}),
+    // The glass shadow's scale from the open size down to the collapsed bar (IslandGlass.css).
+    "--glass-shadow-collapsed-scale": glassShadowScale(settings, collapsedIslandWidth, expandedIslandHeight),
     "--todo-background-color": settings.todoBackgroundColor,
   }) as CSSProperties;
+}
+
+function glassShadowScale(settings: IslandSettings, collapsedWidth: number, expandedHeight: number) {
+  const open = (size: number) => Math.max(1, size * settings.expandedScale);
+  const x = (collapsedWidth * settings.collapsedScale) / open(560);
+  const y = (settings.collapsedHeight * settings.collapsedScale) / open(expandedHeight);
+  return `${x.toFixed(4)}, ${y.toFixed(4)}`;
 }
 
 /**

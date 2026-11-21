@@ -2,9 +2,10 @@
 import { normalizeLyricsSettings } from "../media/lyrics/lyricsSettings.ts";
 import { DEFAULT_SETTINGS } from "./settingsDefaults.ts";
 import { normalizeOrder } from "../../utils/order.ts";
-import { AUTO_COLLAPSE_SECONDS, TUCK_DELAY_SECONDS, COLLAPSED_ITEMS, COLLAPSED_SLOTS, PAGE_DOTS, SHELF_CLEANUP_DAYS, oneOf } from "./settingsLimits.ts";
+import { AUTO_COLLAPSE_SECONDS, TUCK_DELAY_SECONDS, TUCK_EDGE_HEIGHT, COLLAPSED_ITEMS, PAGE_DOTS, SHELF_CLEANUP_DAYS, oneOf } from "./settingsLimits.ts";
 import type { IslandSettings, LegacyIslandSettings } from "./types";
-import { TODO_ROTATION_SECONDS, TODO_SCROLL_SPEED, MESSAGE_PREVIEW_SECONDS } from "./settingsLimits.ts";
+import { normalizeCollapsedHidden, normalizeCollapsedLayout } from "./collapsedLayout.ts";
+import { TODO_ROTATION_SECONDS, TODO_SCROLL_SPEED, MESSAGE_PREVIEW_SECONDS, MESSAGE_EXPAND_MAX_WIDTH, MESSAGE_EXPAND_MAX_HEIGHT, MESSAGE_EXPAND_SECONDS, GAME_NOTICE_SECONDS } from "./settingsLimits.ts";
 
 /** Todos, tucking and opening, module switches, the file shelf and lyrics. */
 export function normalizeBehaviorSettings(settings: LegacyIslandSettings | null | undefined) {
@@ -17,6 +18,15 @@ export function normalizeBehaviorSettings(settings: LegacyIslandSettings | null 
     todoRotationMode: oneOf(["switch", "scroll"] as const, settings?.todoRotationMode, "switch"),
     todoScrollSpeed: wholeSeconds(settings?.todoScrollSpeed, TODO_SCROLL_SPEED, TODO_SCROLL_SPEED.default),
     messagePreviewSeconds: wholeSeconds(settings?.messagePreviewSeconds, MESSAGE_PREVIEW_SECONDS, MESSAGE_PREVIEW_SECONDS.default),
+    // v3.2.6 opt-ins, all off until chosen: adaptive previews, previews in game mode, timer reminders.
+    messageAutoExpand: settings?.messageAutoExpand === true,
+    messageExpandMaxWidth: wholeSeconds(settings?.messageExpandMaxWidth, MESSAGE_EXPAND_MAX_WIDTH, MESSAGE_EXPAND_MAX_WIDTH.default),
+    messageExpandMaxHeight: wholeSeconds(settings?.messageExpandMaxHeight, MESSAGE_EXPAND_MAX_HEIGHT, MESSAGE_EXPAND_MAX_HEIGHT.default),
+    messageExpandSeconds: wholeSeconds(settings?.messageExpandSeconds, MESSAGE_EXPAND_SECONDS, MESSAGE_EXPAND_SECONDS.default),
+    gameShowNotices: settings?.gameShowNotices === true,
+    gameNoticeSeconds: wholeSeconds(settings?.gameNoticeSeconds, GAME_NOTICE_SECONDS, GAME_NOTICE_SECONDS.default),
+    todoTimerReminder: settings?.todoTimerReminder === true,
+    todoTimerReminderSound: settings?.todoTimerReminderSound === true,
     carryOverIncompleteTodos:
       typeof settings?.carryOverIncompleteTodos === "boolean"
         ? settings.carryOverIncompleteTodos
@@ -29,12 +39,15 @@ export function normalizeBehaviorSettings(settings: LegacyIslandSettings | null 
       && typeof settings.enableTodoReorder === "boolean" ? settings.enableTodoReorder : true,
     autoTuck,
     tuckStyle: oneOf(["edge", "line", "hidden"] as const, settings?.tuckStyle, DEFAULT_SETTINGS.tuckStyle),
+    tuckEdgeHeight: wholeSeconds(settings?.tuckEdgeHeight, TUCK_EDGE_HEIGHT, TUCK_EDGE_HEIGHT.default),
     // Saved before this was a setting: an open panel closed only when the island tucked after
     // idling, so it keeps closing after that delay, or never with tucking off.
     autoCollapseSeconds: wholeSeconds(settings?.autoCollapseSeconds, AUTO_COLLAPSE_SECONDS, autoTuck ? AUTO_COLLAPSE_SECONDS.default : 0),
     tuckDelaySeconds: wholeSeconds(settings?.tuckDelaySeconds, TUCK_DELAY_SECONDS, TUCK_DELAY_SECONDS.default),
     // Game mode: on unless turned off. Tucking while full screen stays at its default (off).
     gameDoNotDisturb: settings?.gameDoNotDisturb !== false,
+    // New in 3.2.6 and off unless switched on.
+    ctrlWheelPages: settings?.ctrlWheelPages === true,
     expandTrigger: settings?.expandTrigger === "hover" ? "hover" : "click",
     // Module switches: anything but an explicit false keeps the module on.
     todoEnabled: settings?.todoEnabled !== false,
@@ -50,7 +63,8 @@ export function normalizeBehaviorSettings(settings: LegacyIslandSettings | null 
     autoCopyOtp: typeof settings?.autoCopyOtp === "boolean" ? settings.autoCopyOtp : DEFAULT_SETTINGS.autoCopyOtp,
     collapsedPriority: normalizeOrder(settings?.collapsedPriority, COLLAPSED_ITEMS),
     collapsedShowCover: settings?.collapsedShowCover !== false,
-    collapsedLayout: normalizeOrder(settings?.collapsedLayout, COLLAPSED_SLOTS),
+    collapsedLayout: normalizeCollapsedLayout(settings?.collapsedLayout),
+    collapsedHidden: normalizeCollapsedHidden(settings?.collapsedHidden),
     pageOrder: normalizeOrder(settings?.pageOrder, PAGE_DOTS),
     // Selected activities pause automatic tucking only with an explicit boolean setting.
     keepVisibleWhileAgentRunning: typeof settings?.keepVisibleWhileAgentRunning === "boolean"

@@ -1,4 +1,5 @@
-import { Check, ClipboardList, Copy, ImageIcon, Star, Trash2 } from "lucide-react";
+import { Check, ClipboardList, Copy, FileText, ImageIcon, Star, Trash2 } from "lucide-react";
+import { clipboardItemKind } from "./kind";
 import { useTranslation } from "../../i18n";
 import type { ClipboardHistoryItem } from "./api";
 import { ClipboardItemNote } from "./ClipboardItemNote";
@@ -45,6 +46,7 @@ export function ClipboardHistoryItemRow({
   onPreview: (item: ClipboardHistoryItem) => void;
 }) {
   const t = useTranslation();
+  const itemKind = clipboardItemKind(item);
   const thumbnail = useClipboardThumbnail(item);
 
   return (
@@ -56,7 +58,7 @@ export function ClipboardHistoryItemRow({
         {selected && <Check size={14} strokeWidth={1.5} absoluteStrokeWidth />}
       </button>
       <div className="clipboard-item__content">
-        {item.kind === "image" ? (
+        {itemKind === "image" ? (
           <button className="clipboard-item__thumb" type="button" aria-label={t.clipboard.imagePreview}
             onClick={(event) => { event.stopPropagation(); onPreview(item); }}>
             {thumbnail.url ? (
@@ -67,7 +69,7 @@ export function ClipboardHistoryItemRow({
           </button>
         ) : (
           <span className="clipboard-item__text-icon">
-            <ClipboardList size={14} strokeWidth={2} />
+            {itemKind === "file" ? <FileText size={14} strokeWidth={2} /> : <ClipboardList size={14} strokeWidth={2} />}
           </span>
         )}
         <button className="clipboard-item__main" type="button" onClick={(event) => {

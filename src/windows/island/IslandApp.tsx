@@ -1,12 +1,13 @@
 import { useMemo } from "react";
+import { visibleCollapsedSlots } from "../../features/appearance/collapsedLayout";
 // First: the message panels it loads bring CSS that must come before the page panels' and the shell's.
 import { useIslandNotices } from "./useIslandNotices";
-import { useIslandSearchShortcut } from "./useIslandSearchShortcut";
 // The page panels; before IslandShell so their CSS keeps its place in the cascade.
 import { IslandPages } from "./IslandPages";
 import { useTranslation } from "../../i18n";
 import { useSettingsPresentation } from "../settings/useSettingsPresentation";
 import { useSettingsNavigation } from "./useSettingsNavigation";
+import { useIslandSearchShortcut } from "./useIslandSearchShortcut";
 import { useIslandSettings } from "../../features/appearance/useIslandSettings";
 import { useDocumentTheme } from "../../features/appearance/useDocumentTheme";
 import { resolveSchemeColors } from "../../features/appearance/theme";
@@ -18,9 +19,12 @@ import type { TodoItem } from "../../features/todos/types";
 import { useIslandWindow } from "./useIslandWindow";
 import { getExpandedIslandHeight } from "./expandedHeight";
 import { getIslandStageStyle } from "./stageStyle";
+import { shapedSettings } from "../../features/appearance/islandShape";
 import { useCollapsedTodo } from "./useCollapsedTodo";
+import { useMessageNotice } from "./useMessageNotice";
 import { useGameMode } from "./useGameMode";
 import { useIslandKeyboard } from "./useIslandKeyboard";
+import { useCtrlWheelPages, wheelPageOrder } from "./useCtrlWheelPages";
 import { useIslandFeatures } from "./useIslandFeatures";
 import { useIslandAgentAlerts } from "./useIslandAgentAlerts";
 import { useIslandAgents } from "./useIslandAgents";
@@ -54,8 +58,6 @@ export function IslandApp() {
   const t = useTranslation();
   const navigation = useIslandNavigation();
   const { mode, isTucked, page, setPage, collapseIsland, tuckIsland, revealIsland, minimizeToEdge, openIslandPage, toggleClipboardHistory } = navigation;
-  // Ctrl+Shift+G and the tray item open the search page instead of a second window.
-  useIslandSearchShortcut(openIslandPage);
   const [settings, setSettings] = useIslandSettings();
   const detachedSettings = useSettingsPresentation();
   const { openSettings, changePresentation } = useSettingsNavigation(openIslandPage, setPage);
@@ -64,7 +66,7 @@ export function IslandApp() {
   const game = useGameMode(settings, { mode, isTucked, collapseIsland, tuckIsland, revealIsland });
   const notices = useIslandNotices(settings, { mode, isTucked, quiet: game.quiet });
   useIdleUpdateInstall(mode === "collapsed", game.quiet);
-  const { qqNotifications, wechatReminders, qqMail, hasMessagePreview } = notices;
+  const { qqNotifications, wechatReminders, qqMail, preview, hasMessagePreview } = notices;
   // The output level shows only on the collapsed island (its waveform).
   const media = useMediaState(settings.musicEnabled, mode === "collapsed");
   const { agentStatus, agentSessions, listedAgentSessions, activeAgentSessionCount, unseenAgentSessions, agentRemoval, agentSession, agentUsages, alertUsages } =
@@ -89,6 +91,7 @@ export function IslandApp() {
     );
   // The cover goes with the lyric line: when something ranked above lyrics is shown, it goes too.
   const collapsedCover = collapsedItem === "lyrics" ? cover : null;
+  const notice = useMessageNotice(preview, settings, { mode, isTucked, quiet: game.quiet, collapsedIslandWidth });
   const { agentVisualState, agentStatusLabel } = useAgentIndicator(agentStatus, settings, activeAgentSessionCount, t);
   useIslandTucking({
     settings,
@@ -115,6 +118,8 @@ export function IslandApp() {
     setMessageSource,
     openIslandPage,
   });
+  // Ctrl+Shift+G and the tray item route to the search page (local file-search feature).
+  useIslandSearchShortcut(openIslandPage);
   const { alertedSession, approvals: agentApprovals, agentCardHeight } = useIslandAgentAlerts({
     sessions: agentSessions,
     unseen: unseenAgentSessions.keys,
@@ -137,6 +142,7 @@ export function IslandApp() {
     isReadingMail: qqMail.wantsTallPanel,
     maxPanelHeight: settings.maxPanelHeight,
     clipboardVisibleRows: settings.clipboardVisibleRows,
+    todoVisibleRows: settings.todoVisibleRows,
     agentVisibleRows: settings.agentVisibleRows,
     agentSessionView: settings.agentSessionView,
     fontScale: settings.islandFontPercent / 100,
@@ -146,10 +152,10 @@ export function IslandApp() {
     shelfItems: fileShelf.items.length,
   }));
   const scheme = useDocumentTheme(settings);
-  const colors = useMemo(() => resolveSchemeColors(settings, scheme, settings.material), [settings, scheme]);
+  const colors = useMemo(() => resolveSchemeColors(settings, scheme), [settings, scheme]);
   const stageStyle = useMemo(
-    () => getIslandStageStyle(settings, colors, collapsedIslandWidth, expandedIslandHeight),
-    [collapsedIslandWidth, colors, expandedIslandHeight, settings],
+    () => getIslandStageStyle(shapedSettings(settings), colors, notice.size?.width ?? collapsedIslandWidth, expandedIslandHeight, notice.size?.height),
+    [collapsedIslandWidth, colors, expandedIslandHeight, settings, notice.size],
   );
 
 
@@ -166,6 +172,7 @@ export function IslandApp() {
     setSettings,
     expandedIslandHeight,
     collapsedIslandWidth,
+    notice: notice.nativeNotice,
     onCollapse: collapseIsland,
   });
 
@@ -185,6 +192,14 @@ export function IslandApp() {
     collapseIsland,
   );
 
+  useCtrlWheelPages({
+    enabled: settings.ctrlWheelPages,
+    mode,
+    page,
+    pages: wheelPageOrder(settings.pageOrder, features, settings.clipboardDetached),
+    onPageChange: setPage,
+  });
+
   const { openTranslator } = useIslandTranslation(
     settings.translationEnabled,
     features.translation,
@@ -201,17 +216,20 @@ export function IslandApp() {
         qqNotifications={qqNotifications}
         wechatReminders={wechatReminders}
         onOpenMessages={openMessages}
+        preview={preview}
+        notice={notice.size}
         mode={mode}
         page={page}
         expandedHeight={expandedIslandHeight}
         material={settings.material}
-        auroraAura={settings.auroraAura}
         nativeGlassState={nativeGlassState}
         isTucked={isTucked}
         tuckStyle={settings.tuckStyle}
         topEdgeShoulders={settings.topEdgeShoulders}
+        islandCornerShape={settings.islandCornerShape}
         positionLocked={settings.positionLocked}
         isDetached={isPositionDetached || settings.marginY > 0}
+        islandShape={settings.islandShape}
         showTitle={settings.showTitle}
         showCollapsedText={settings.showCollapsedText}
         collapsedTaskTitle={collapsedTaskTitle}
@@ -219,7 +237,7 @@ export function IslandApp() {
         todoTimer={settings.todoEnabled ? collapsedTimer : null}
         collapsedTodoCount={collapsedTodoCount}
         collapsedItem={collapsedItem}
-        collapsedLayout={settings.collapsedLayout}
+        collapsedLayout={visibleCollapsedSlots(settings.collapsedLayout, settings.collapsedHidden)}
         collapsedCover={collapsedCover}
         lyricsSettings={settings}
         pageOrder={settings.pageOrder}
@@ -243,9 +261,7 @@ export function IslandApp() {
         onOpenSettings={openSettings}
         onTuck={tuckIsland}
         onReveal={hoverTucked}
-        // Header dots must use the open path: a detached clipboard opens its own window
-        // instead of setting a page that gets corrected back to Todo.
-        onPageChange={openEnabledPage}
+        onPageChange={setPage}
         pageActions={page === "agents" && (
           <AgentArrangeButton sort={settings.agentSessionSort} group={settings.agentSessionGroup} onChange={(patch) => setSettings({ ...settings, ...patch })} />
         )}

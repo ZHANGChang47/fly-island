@@ -73,6 +73,68 @@ fn custom_position_survives_tuck_and_reveal() {
 }
 
 #[test]
+fn tucking_remembers_the_actual_normal_position_instead_of_stale_drag_coordinates() {
+    for (x, top) in [(420, 0), (-1700, -1080), (2500, 72)] {
+        let mut island = IslandWindowState {
+            custom_position: Some(IslandPosition { x, y: top + 180 }),
+            ..IslandWindowState::default()
+        };
+        // A non-drag OS move (or a just-snapped drop) changed the window, not its cached y.
+        assert_eq!(resolve_stage_position(island, 100, top, top - 28).1, top + 180);
+        island.custom_position = position_before_tuck(island, PhysicalPosition::new(x, top), None, 7);
+        island.is_tucked = true;
+        assert_eq!(resolve_stage_position(island, 100, top, top - 28), (x, top - 28));
+        island.is_tucked = false;
+        assert_eq!(resolve_stage_position(island, 100, top, top - 28), (x, top));
+    }
+}
+
+#[test]
+fn retucking_mid_reveal_keeps_the_slide_destination_and_floating_positions() {
+    let island = IslandWindowState {
+        custom_position: Some(IslandPosition { x: -900, y: 180 }),
+        ..IslandWindowState::default()
+    };
+    let at = |y| Some(IslandPosition { x: -900, y });
+    assert_eq!(position_before_tuck(island, PhysicalPosition::new(-900, 20), Some((7, (-900, 180))), 7), at(180));
+    assert_eq!(position_before_tuck(island, PhysicalPosition::new(-900, 180), None, 7), at(180));
+    assert_eq!(position_before_tuck(island, PhysicalPosition::new(-900, 180), Some((6, (-900, 20))), 7), at(180));
+    assert_eq!(position_before_tuck(IslandWindowState::default(), PhysicalPosition::new(20, 20), None, 7), None);
+}
+
+#[test]
+fn reveal_coordinates_do_not_scale_again_or_depend_on_stage_height() {
+    for dpi in [1.0, 1.25, 1.5, 1.75] {
+        for monitor_top in [-1080, 0, 300] {
+          for top_inset in [0, (48.0_f64 * dpi).round() as i32] {
+            let top = monitor_top + top_inset;
+            for scale in [0.75, 1.0, 1.4] {
+                for height in [220.0, 450.0, 800.0] {
+                    for style in [TuckStyle::Edge, TuckStyle::Line, TuckStyle::Hidden] {
+                        let mut island = IslandWindowState {
+                            collapsed_scale: scale, expanded_scale: 1.2, expanded_height: height,
+                            tuck_style: style, ..IslandWindowState::default()
+                        };
+                        let (normal_y, tucked_y) = stage_top_positions(island, monitor_top, top_inset, dpi);
+                        assert_eq!(normal_y, top, "taskbar inset is already physical, not scaled twice");
+                        assert_eq!(resolve_stage_position(island, -900, top, tucked_y), (-900, top));
+                        island.is_tucked = true;
+                        assert_eq!(resolve_stage_position(island, -900, top, tucked_y), (-900, tucked_y));
+                        island.custom_position = Some(IslandPosition { x: -700, y: top });
+                        island.is_tucked = false;
+                        assert_eq!(resolve_stage_position(island, -900, top, tucked_y), (-700, top));
+                        island.mode = IslandMode::Expanded;
+                        island.notice_size = Some((520.0, 180.0));
+                        assert_eq!(resolve_stage_position(island, -900, top, tucked_y), (-700, top));
+                    }
+                }
+            }
+          }
+        }
+    }
+}
+
+#[test]
 fn notch_has_flat_top_and_rounded_bottom_at_all_scales() {
     for scale in [0.75, DEFAULT_COLLAPSED_SCALE, 1.0, 1.4, 2.1] {
         for mode in [IslandMode::Collapsed, IslandMode::Expanded] {
@@ -199,7 +261,7 @@ fn tucked_styles_keep_their_visible_height_and_only_capture_their_hot_zone() {
         assert_eq!(TuckStyle::from_value(Some(name)), style);
         for dpi in [1.0, 1.25, 1.5] {
             for scale in [0.75, 1.0, 1.4] {
-                for height in [32.0, 38.0, 60.0] {
+                for height in [26.0, 32.0, 38.0, 60.0] {
                     let island = IslandWindowState {
                         is_tucked: true, tuck_style: style, collapsed_height: height,
                         ..state(IslandMode::Collapsed, scale, DEFAULT_EXPANDED_ISLAND_HEIGHT)
@@ -391,5 +453,64 @@ fn morphing_tucks_anchor_to_each_work_area_and_restore_floating_positions() {
                 assert_eq!(resolve_stage_position(island, -900, top, top), (-500, top + 180));
             }
         }
+    }
+}
+
+#[test]
+fn edge_tuck_leaves_the_chosen_strip_on_screen() {
+    let mut island = IslandWindowState { tuck_style: TuckStyle::Edge, collapsed_scale: 1.0, ..IslandWindowState::default() };
+    let height = island.collapsed_height;
+    assert_eq!(tucked_top_offset(island, 1.0), -((height - 10.0).round() as i32), "10px by default, as before");
+    island.tuck_edge_height = 4.0;
+    assert_eq!(tucked_top_offset(island, 2.0), -(((height - 4.0) * 2.0).round() as i32));
+}
+
+#[test]
+fn a_grown_message_preview_sets_the_hit_area_within_the_stage_and_game_previews_pass_clicks() {
+    let mut island = state(IslandMode::Collapsed, 1.0, DEFAULT_EXPANDED_ISLAND_HEIGHT);
+    island.notice_size = notice_size_within_stage(Some(520.0), Some(180.0), 1.0);
+    assert_eq!(island.active_size(), (520.0, 180.0));
+    // Inside the grown box, below where the plain collapsed bar ends.
+    assert!(point_in_island(island, 1.0, 410.0, 120.0));
+    island.click_through = true;
+    assert!(!point_in_island(island, 1.0, 410.0, 120.0));
+    // Expanded, the page's size again.
+    island.mode = IslandMode::Expanded;
+    assert_eq!(island.active_size().0, EXPANDED_ISLAND_WIDTH);
+    // Limits: the stage at the scale, never below the smallest bar, and both sides or none.
+    let (width, height) = notice_size_within_stage(Some(2000.0), Some(2000.0), 1.4).unwrap_or_default();
+    assert!(width * 1.4 <= STAGE_WINDOW_WIDTH && height * 1.4 <= STAGE_WINDOW_HEIGHT);
+    assert_eq!(notice_size_within_stage(Some(10.0), Some(10.0), 1.0), Some((MIN_COLLAPSED_ISLAND_WIDTH, MIN_COLLAPSED_ISLAND_HEIGHT)));
+    assert_eq!(notice_size_within_stage(Some(400.0), None, 1.0), None);
+    assert_eq!(notice_size_within_stage(Some(f64::NAN), Some(80.0), 1.0), None);
+}
+
+#[test]
+fn collapsed_corners_follow_their_own_setting_once_sent() {
+    let mut state = IslandWindowState { mode: IslandMode::Collapsed, corner_radius: 42.0, ..IslandWindowState::default() };
+    // An older front end sends no collapsed radius: the old 12 / 30 ratio stays.
+    assert!((state.bottom_corner_radius() - 16.8).abs() < 1e-9);
+    state.collapsed_corner_radius = Some(8.0);
+    assert_eq!(state.bottom_corner_radius(), 8.0);
+    state.mode = IslandMode::Expanded;
+    assert_eq!(state.bottom_corner_radius(), 42.0, "the open island keeps the open radius");
+}
+
+#[test]
+fn collapsed_bar_takes_clicks_in_its_corners_and_just_beside_it() {
+    for dpi in [1.0, 1.25, 1.5, 2.0] {
+        let island = IslandWindowState { collapsed_height: 38.0, ..state(IslandMode::Collapsed, 1.0, DEFAULT_EXPANDED_ISLAND_HEIGHT) };
+        let (width, height) = island.active_size();
+        let left = (STAGE_WINDOW_WIDTH - width) / 2.0 * dpi;
+        let right = left + width * dpi;
+        let bottom = height * dpi;
+        // The bottom corners, where the first and last buttons sit.
+        assert!(point_in_island(island, dpi, left + 1.0, bottom - 1.0));
+        assert!(point_in_island(island, dpi, right - 1.0, bottom - 1.0));
+        // A few px outside the sides still counts; further out passes through.
+        assert!(point_in_island(island, dpi, left - 3.0 * dpi, bottom / 2.0));
+        assert!(!point_in_island(island, dpi, left - 6.0 * dpi, bottom / 2.0));
+        assert!(!point_in_island(island, dpi, right + 6.0 * dpi, bottom / 2.0));
+        assert!(!point_in_island(island, dpi, left + width * dpi / 2.0, bottom + 1.0));
     }
 }

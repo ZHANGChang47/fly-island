@@ -1,3 +1,4 @@
+import "./shared/storage/runLegacyMigration";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./styles/tokens.css";
@@ -9,63 +10,80 @@ import { SettingsWindow } from "./windows/settings/SettingsWindow";
 import { ClipboardWindow } from "./windows/clipboard/ClipboardWindow";
 import { SearchWindow } from "./windows/search/SearchWindow";
 import { PreviewWindow } from "./windows/preview/PreviewWindow";
-import { I18nProvider } from "./i18n";
+import { I18nProvider, loadLocale, TRANSLATIONS } from "./i18n";
 import { trackIslandTopEdge } from "./windows/island/topEdge";
 import { installSameWindowStorageEvents } from "./lib/sameWindowStorageEvents";
 import { shouldPreventContextMenu } from "./lib/contextMenu";
 import { applyDocumentTheme } from "./features/appearance/useDocumentTheme";
 import { loadSettings } from "./features/appearance/storage";
+import { captureFirstLaunch } from "./features/onboarding/firstLaunch";
+import { installAppLogCapture } from "./features/diagnostics/appLogCapture";
+import { restoreConfigBeforeMount } from "./features/config-transfer/bootstrap";
 
 const windowKind = new URLSearchParams(window.location.search).get("window");
-// Before the first paint, so no window shows a frame in the wrong colour scheme.
-applyDocumentTheme(loadSettings());
+// First, so errors while the window starts are in the diagnostic log when it is on.
+installAppLogCapture();
 
-window.addEventListener("contextmenu", (event) => {
-  const target = event.target instanceof Element ? event.target
-    : event.target instanceof Node ? event.target.parentElement : null;
-  if (shouldPreventContextMenu(target)) event.preventDefault();
-}, true);
+async function mountApp() {
+  await restoreConfigBeforeMount();
+  // Before loading the settings, which may save them on a first launch.
+  captureFirstLaunch();
+  // Before the first paint, so no window shows a frame in the wrong colour scheme.
+  applyDocumentTheme(loadSettings());
 
-if (windowKind === null) {
-  trackIslandTopEdge();
-  // Settings can be shown inside the island, which then shares this window with it.
-  installSameWindowStorageEvents();
+  window.addEventListener("contextmenu", (event) => {
+    const target = event.target instanceof Element ? event.target
+      : event.target instanceof Node ? event.target.parentElement : null;
+    if (shouldPreventContextMenu(target, Boolean(window.getSelection()?.toString()))) event.preventDefault();
+  }, true);
+
+  if (windowKind === null) {
+    trackIslandTopEdge();
+    // Settings can be shown inside the island, which then shares this window with it.
+    installSameWindowStorageEvents();
+  }
+
+  window.addEventListener(
+    "pointerdown",
+    () => {
+      document.documentElement.dataset.inputModality = "pointer";
+    },
+    true,
+  );
+
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key === "Tab") {
+        document.documentElement.dataset.inputModality = "keyboard";
+      }
+    },
+    true,
+  );
+
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    <React.StrictMode>
+      <I18nProvider>
+        {windowKind === "translation" ? (
+          <TranslationWindow />
+        ) : windowKind === "settings" ? (
+          <SettingsWindow />
+        ) : windowKind === "clipboard" ? (
+          <ClipboardWindow />
+        ) : windowKind === "search" ? (
+          <SearchWindow />
+        ) : windowKind === "preview" ? (
+          <PreviewWindow />
+        ) : (
+          <IslandApp />
+        )}
+      </I18nProvider>
+    </React.StrictMode>,
+  );
 }
 
-window.addEventListener(
-  "pointerdown",
-  () => {
-    document.documentElement.dataset.inputModality = "pointer";
-  },
-  true,
-);
-
-window.addEventListener(
-  "keydown",
-  (event) => {
-    if (event.key === "Tab") {
-      document.documentElement.dataset.inputModality = "keyboard";
-    }
-  },
-  true,
-);
-
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <I18nProvider>
-      {windowKind === "translation" ? (
-        <TranslationWindow />
-      ) : windowKind === "settings" ? (
-        <SettingsWindow />
-      ) : windowKind === "clipboard" ? (
-        <ClipboardWindow />
-      ) : windowKind === "search" ? (
-        <SearchWindow />
-      ) : windowKind === "preview" ? (
-        <PreviewWindow />
-      ) : (
-        <IslandApp />
-      )}
-    </I18nProvider>
-  </React.StrictMode>,
-);
+void mountApp().catch((error) => {
+  console.error("Application startup failed", error);
+  const root = document.getElementById("root");
+  if (root) root.textContent = TRANSLATIONS[loadLocale()].settings.configTransfer.startupFailed;
+});

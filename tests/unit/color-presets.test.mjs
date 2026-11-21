@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addColorPreset, MAX_COLOR_PRESETS, normalizeColorPresets, removeColorPreset } from "../../src/features/appearance/colorPresets.ts";
+import { addColorPreset, applyColorPreset, MAX_COLOR_PRESETS, normalizeColorPresets, removeColorPreset } from "../../src/features/appearance/colorPresets.ts";
+import { DEFAULT_SETTINGS } from "../../src/features/appearance/settings.ts";
 import { COLOR_PRESETS_KEY, loadColorPresets, saveColorPresets } from "../../src/features/appearance/storage.ts";
 
 const colors = { islandBackgroundColor: "#2f2f37", taskTextColor: "#ffffff", pulseColor: "#3ae489" };
@@ -43,6 +44,45 @@ test("eight presets is the limit, and deletion makes room again", () => {
   assert.equal(addColorPreset(presets, palette(8), "ninth").length, 8);
 });
 
+test("page text is saved, canonicalized and included in deduplication, including follow-background", () => {
+  let presets = addColorPreset([], { ...colors, pageTextColor: "#aabbcc" }, "custom");
+  assert.equal(presets[0].pageTextColor, "#AABBCC");
+  assert.equal(addColorPreset(presets, { ...colors, pageTextColor: "#AABBCC" }, "duplicate"), presets);
+  presets = addColorPreset(presets, { ...colors, pageTextColor: "#112233" }, "other");
+  presets = addColorPreset(presets, { ...colors, pageTextColor: "" }, "auto");
+  assert.equal(presets.length, 3);
+  assert.equal(presets[2].pageTextColor, "");
+  assert.equal(addColorPreset(presets, { ...colors, pageTextColor: "red" }, "bad"), presets);
+  assert.equal(normalizeColorPresets([...presets, { ...presets[0], id: "duplicate" }]).length, 3);
+});
+
+test("legacy presets stay distinct from explicit auto/custom page text and never reset the current ink", () => {
+  const legacy = { id: "legacy", ...colors };
+  const custom = { id: "custom", ...colors, pageTextColor: "#aabbcc" };
+  const auto = { id: "auto", ...colors, pageTextColor: "" };
+  const presets = normalizeColorPresets([legacy, custom, auto]);
+  assert.equal(presets.length, 3);
+  assert.equal(Object.hasOwn(presets[0], "pageTextColor"), false);
+  const settings = { ...DEFAULT_SETTINGS, pageTextColor: "#445566", collapsedScale: 1.2 };
+  assert.equal(applyColorPreset(settings, presets[0]).pageTextColor, "#445566");
+  assert.equal(applyColorPreset(settings, presets[1]).pageTextColor, "#AABBCC");
+  assert.equal(applyColorPreset(settings, presets[2]).pageTextColor, "");
+  assert.equal(applyColorPreset(settings, presets[1]).collapsedScale, 1.2);
+  for (const invalid of [null, 42, "red", "#abc"]) {
+    const [preset] = normalizeColorPresets([{ ...legacy, pageTextColor: invalid }]);
+    assert.equal(applyColorPreset(settings, preset).pageTextColor, "#445566");
+  }
+});
+
+test("four-color presets round-trip through the existing storage key without losing follow-background", () => {
+  withStorage(() => {
+    assert.equal(saveColorPresets(normalizeColorPresets([
+      { id: "legacy", ...colors }, { id: "custom", ...colors, pageTextColor: "#aabbcc" }, { id: "auto", ...colors, pageTextColor: "" },
+    ])), true);
+    assert.deepEqual(loadColorPresets().map(preset => preset.pageTextColor), [undefined, "#AABBCC", ""]);
+  });
+});
+
 test("loading skips invalid records, duplicate ids/colors, caps at eight, and treats corrupt data as empty", () => {
   for (const value of [null, {}, "bad", 42]) assert.deepEqual(normalizeColorPresets(value), []);
   const entries = [null, {}, { id: "", ...colors }, { id: "bad", ...colors, pulseColor: "red" },
@@ -50,13 +90,13 @@ test("loading skips invalid records, duplicate ids/colors, caps at eight, and tr
   assert.equal(normalizeColorPresets(entries).length, 1);
   assert.equal(normalizeColorPresets(Array.from({ length: 10 }, (_, index) => ({ id: String(index), ...palette(index) }))).length, 8);
   withStorage((values, block) => {
-    values.set("focusd-island-setting-presets", "retired");
+    values.set("fly-island-setting-presets", "retired");
     assert.deepEqual(loadColorPresets(), []);
     values.set(COLOR_PRESETS_KEY, "{broken");
     assert.deepEqual(loadColorPresets(), []);
     assert.equal(saveColorPresets(addColorPreset([], colors, "one")), true);
     assert.equal(loadColorPresets()[0].islandBackgroundColor, "#2F2F37");
-    assert.equal(values.get("focusd-island-setting-presets"), "retired");
+    assert.equal(values.get("fly-island-setting-presets"), "retired");
     block();
     assert.deepEqual(loadColorPresets(), []);
     assert.equal(saveColorPresets([]), false);

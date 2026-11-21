@@ -1,11 +1,14 @@
 //! Windows media sessions (SMTC) and the system audio endpoint behind the music page.
 
 mod audio;
+mod cover;
 mod diagnostics;
+pub(crate) mod hotkeys;
 mod service;
 mod session;
 mod timeline;
 mod watcher;
+mod worker;
 
 #[tauri::command]
 pub async fn get_media_diagnostics() -> Result<diagnostics::MediaDiagnostics, String> {
@@ -90,6 +93,8 @@ macro_rules! tauri_commands {
         $next!([$($done)*
             crate::media_control::get_media_state,
             crate::media_control::get_media_diagnostics,
+            crate::media_control::hotkeys::set_media_shortcuts,
+            crate::media_control::hotkeys::get_media_shortcut_errors,
             crate::media_control::get_audio_level,
             crate::media_control::media_play_pause,
             crate::media_control::media_next,

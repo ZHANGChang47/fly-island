@@ -31,12 +31,13 @@
   --glass-pointer-y: 18%;
   --glass-page-accent: 116, 214, 255;
   /*
-   * Island corner radii, all scaled from the expanded bottom radius in the appearance
-   * settings (stageStyle.ts) with the ratios of the 30 / 12 / 14 px design (collapsed 12, 2026-11-11).
+   * Island corner radii from the appearance settings (stageStyle.ts): the open island's, with its
+   * panels scaled from it, and the collapsed bar's, set on its own (2026-11-18).
    * Rust scales its hit-test corners the same way (island/state.rs).
    */
   --island-radius: calc(var(--island-corner-radius-size, 42) * 1px);
-  --island-radius-collapsed: calc(var(--island-radius) * 12 / 30);
+  /* The collapsed bar's own setting since 2026-11-18 (no longer 12 / 30 of the open radius). */
+  --island-radius-collapsed: calc(var(--island-collapsed-corner-radius-size, 16.8) * 1px);
   /* Inner panels sit 20px inside the expanded island, so this keeps their corners concentric. */
   --island-panel-radius: max(8px, calc(var(--island-radius) - 20px));
   /* A box inside a panel with the usual 16px padding (inner = outer - padding). */
@@ -57,7 +58,8 @@
   color: var(--color-text);
   /* A flat fill, the same colour the collapsed island shows, without grid lines or shading.
      The opacity setting fades only this fill (stageStyle.ts), never the text on it. */
-  background: var(--island-fill, var(--island-background-color));
+  --island-material-fill: var(--island-fill, var(--island-background-color));
+  background: var(--island-material-fill);
   border: 0;
   overflow: visible;
   /*
@@ -70,6 +72,13 @@
     width var(--island-motion-duration) var(--island-motion),
     height var(--island-motion-duration) var(--island-motion),
     border-radius var(--island-motion-duration) var(--island-motion);
+}
+
+/* An adaptive message preview grows the collapsed island on the opening spring, and shrinks back
+   on the closing one when it ends (useMessageNotice, noticeLayout.ts). */
+.island--notice {
+  --island-motion: var(--island-spring-open);
+  --island-motion-duration: 480ms;
 }
 
 /* Old WebView2 must never substitute an unsupported linear() into a transition shorthand. */
@@ -131,7 +140,7 @@
   border-radius: 0 0 var(--island-shape-radius-collapsed) var(--island-shape-radius-collapsed);
   /* The island is a surface, not a link: only its small buttons show the hand. */
   cursor: default;
-  background:
+  --island-material-fill:
     /* The shading fades with the fill (classic opacity). */
     linear-gradient(180deg, color-mix(in srgb, var(--island-shade-top) calc(var(--island-fill-alpha, 1) * 100%), transparent), color-mix(in srgb, var(--island-shade-bottom) calc(var(--island-fill-alpha, 1) * 100%), transparent)),
     var(--island-fill, var(--island-background-color));
@@ -175,6 +184,14 @@
 }
 
 /*
+ * The capsule (islandShape.ts) collapses to a true pill: its radius is half the bar's height, and
+ * the ends stay round whatever corner shape the open island uses.
+ */
+.island--capsule.island--collapsed:not(.island--tucked) {
+  --island-corner-shape: round;
+}
+
+/*
  * The collapsed bar and the page panel, each at its own fixed scale. The 6px slide is a translate
  * in front of that scale: it moves the layer without drawing it again, and as the scale itself
  * never animates the text is drawn at its final size and stays sharp.
@@ -198,7 +215,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-md);
-  padding: 0 18px;
+  /* Settings → Appearance → Collapsed island → Side space (18px by default). */
+  padding: 0 var(--collapsed-island-padding, 18px);
   opacity: 1;
   transform: scale(var(--island-collapsed-scale));
   transition-delay: var(--island-collapsed-fade-delay), 0s;
@@ -301,5 +319,6 @@
 @supports not (corner-shape: superellipse(1.6)) {
   .island {
     --island-radius: calc(var(--island-corner-radius-size, 42) * 1px / 1.4);
+    --island-radius-collapsed: calc(var(--island-collapsed-corner-radius-size, 16.8) * 1px / 1.4);
   }
 }

@@ -5,6 +5,18 @@
 
 全局方向见 [DESIGN.md](../../DESIGN.md)。
 
+## 每日 Markdown 反向同步（2026-11-19，issue #88）
+
+- 设置 → 待办 → 保存路径增加「从文件同步回岛上 / Sync file edits back to the island」，默认关闭；说明开启后在外部编辑当天 Markdown，岛上的待办和笔记会随之更新。未保存文件夹路径时禁用，并说明先保存路径。复用设置开关行和现有换行布局。（用户要求）
+- 关闭时沿用原单向导出。开启后每 1.5 秒检查当前日期文件，连续两次稳定的版本才导入；跨天和保存路径变化后切换监听对象。轮询状态放在内存，不引起无变化的窗口重渲染。（用户要求；轮询和稳定样本为 Agent 推断）
+- 文件的开头列表决定任务标题、勾选和顺序；支持 `-` / `*` / `+`、大小写 X、缩进、空行和无复选框的普通列表。首个正文段落之后全部属于每日笔记。现有导出没有专门的笔记标记，因此纯列表笔记与待办有固有歧义；需要以正文或标题（如 `## 笔记`）开始笔记区。（Agent 推断；不改变原导出格式）
+- 标题先精确匹配，重复标题取最近位置；其余行数相同时按剩余位置推断改名，以保留 ID、创建时间、活动计时和隐藏字段。新增行创建新 ID；文件删除的旧行删除；系统更新待办、未来已安排列表不参与导入。（用户要求；无法消除的改名/同位替换歧义采用位置优先）
+- 标题输入框打开、笔记或新增输入框聚焦以及拖拽期间，暂缓导入和写盘，完成后与已提交内容合并。空文件、半截复选框、损坏编码或暂时移走的文件不清空岛屿，也不被自动保存覆盖。（用户要求；输入框与拖拽保护为 Agent 推断）
+- 并发编辑以最后共同内容作三方合并，保留彼此独立的改动。同一字段或删除/改名冲突按岛上最后编辑时间与文件修改时间决定；写入前在文件夹留下两份 `YYYY-MM-DD.conflict-<时间戳>-island.md` / `-file.md` 恢复副本。新版写入使用版本比较与 Windows 写入/替换排他保护，比较失败等待再读取。（用户要求；恢复文件名和整篇时间比较为 Agent 推断）
+- 不将有效 Markdown 的缩短直接判断为截断，否则无法支持删除行；两次稳定采样和语法保护只能识别临时空文件与结构损坏，无法区分有意删除和停留很久的合法前缀。（Agent 推断，保留原格式的限制）
+
+English: File sync is off by default and requires a saved folder. When enabled, edits to today's Markdown update the leading task list and daily note. Editing a title/note or dragging defers synchronization. Empty or malformed files never clear island data. Independent edits merge; a same-field conflict uses the newer document timestamp and keeps both versions in timestamped conflict files. A note made only of list items is ambiguous in the existing export format; start it with a heading or prose.
+
 ## 深色列表
 
 - 待办与岛屿共用深色背景，移除纸张底色、横线、折痕和投影；取消左侧“回到今天 / 保存 / 历史”三个按钮，继续自动保存。（2026-11-10，用户确认）
@@ -46,6 +58,17 @@ English: With the timer on, a watch icon sits left of Start. Start only starts t
 
 ## 尺寸
 
+## 结束前提醒（2026-11-18）
+
+- 设置 → 待办 → 番茄钟下增加“结束前提醒”，默认关闭；开启后再显示独立的“提醒时播放声音”，默认关闭。关闭提醒会取消当前轮次的提前提醒和警示，保留倒计时。（用户需求；取消当前提醒为 Agent 实现决定）
+- 怀表的小时间设置保留现有计时步进器与开始按钮，开启提醒后在其中增加铃铛和“提前几分钟”的独立步进器。0 表示不提醒，可选 1–60 分钟且必须小于本轮总时长；首次选择默认 5 分钟，下一次沿用上次实际选择。控件保持在岛屿可点击范围内，中文与英文均不横向溢出。（用户需求；范围和记忆方式为 Agent 实现决定）
+- 到达阈值后该轮只提醒一次，先保存 `reminded` 再提示。不弹文字（用户手测后要求 2026-11-18：去掉「剩余 X 分钟」之类的提示）：展开列表中的对应标题闪烁、倒计时变红，收起条、轮换与滚动待办也显示自己的红色计时胶囊；开了声音时响三声（`idle.wav`，间隔 650ms）。开启减少动态效果时保留静态警示色、停止闪烁。（用户需求；间隔为 Agent 实现决定）
+- 游戏 quiet 状态下不播放提前提醒音，退出游戏不补响；已经到达阈值的轮次仍记为已提醒。结束、停止、完成或删除后清除警示；再次计时重新计算阈值。重启恢复截止时间和已提醒标记，避免重复提示。原有计时结束提醒保持既有行为。（用户需求；恢复行为为 Agent 实现决定）
+
+English: Before-end reminders and their optional sound are off by default. The timer picker can choose 0–60 minutes before the end, always shorter than the round. A reminder is persisted once and highlights that todo and its countdown in red, with no text line; with the sound on it chimes three times. Quiet game mode suppresses the sound without replaying it later.
+
+## 尺寸
+
 - 待办页更紧凑（2026-11-11，用户要求"todo页面可以缩小一点"）：一行待办 32px（原 38px），行距 6px；勾选框 20px，开始 / 删除 / 拖动按钮 22px 高；输入框 32px（原 36px）；本子上下内边距 12px（原 18 / 16），页签行 22px，块间距 8px。两行时展开岛高 258px（原 306px），每多一行加 38px（原 46px），所以默认 490px 的最大面板高度下能放 8 行才开始滚动（原 6 行）。笔记页给一行的余量，296px；归档、复盘、已安排的固定高度不变。高度常量在 `windows/island/layout.ts`，和 `TodoNotebook.css`、`TodoListItem.css` 保持一致。（Agent 推断：具体数值）
 
 - 待办里的圆角比岛内其他卡片小一级（用户要求 2026-11-11：原来太圆）：深色列表不再绘制独立的面板背景；待办行、输入框和每日笔记用 `--corner-xs`，行内的勾选框、拖动柄和标题输入用 `--corner-xs`，日期按钮用 `--corner-sm`。
@@ -67,3 +90,4 @@ English: With the timer on, a watch icon sits left of Start. Start only starts t
 - 今天和未来日期的标题下方有“添加待办”输入框。回车后，今天的待办进入今日列表，未来的进入“已安排”。已安排的待办用紫色虚线框，悬停时显示删除按钮。过去的日期从归档读取完成情况，未完成项可以「移到今天」。当天已有同名未完成项时，按钮提示已经添加。
 - 日历展开高度为 384px，受面板高度上限约束。六周月历在默认高度完整显示，右侧列表能显示约五行单行待办。（Agent 推断：尺寸）
 - 选中状态有短过渡，切换日期时清单轻微淡入，开启减少动态效果时直接切换。回归页是 `tests/regression/todo-history-calendar.html`。
+

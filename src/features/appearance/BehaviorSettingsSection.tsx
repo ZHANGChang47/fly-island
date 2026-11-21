@@ -3,6 +3,7 @@ import { SettingsGroup } from "../../components/settings/SettingsGroup";
 import { SettingsRow } from "../../components/settings/SettingsRow";
 import { SettingsSelect } from "../../components/settings/SettingsSelect";
 import { SettingsToggleRow } from "../../components/settings/SettingsToggleRow";
+import type { ReactNode } from "react";
 
 const LOCALE_OPTIONS = LOCALE_CODES.map((code) => ({ value: code, label: TRANSLATIONS[code].localeLabel }));
 
@@ -12,8 +13,10 @@ export function BehaviorSettingsSection({
   locale,
   detachedSettings,
   onLaunchAtStartupChange,
+  launchAtStartupDisabled,
   onLocaleChange,
   onDetachedSettingsChange,
+  children,
 }: {
   launchAtStartup: boolean;
   /** Whether settings open in their own window instead of as a page of the island. */
@@ -21,7 +24,10 @@ export function BehaviorSettingsSection({
   onDetachedSettingsChange: (detached: boolean) => void;
   locale: LocaleCode;
   onLaunchAtStartupChange: (enabled: boolean) => void;
+  /** Windows Startup Apps can keep the Run value while preventing it from launching. */
+  launchAtStartupDisabled: boolean;
   onLocaleChange: (locale: LocaleCode) => void;
+  children?: ReactNode;
 }) {
   const t = useTranslation();
 
@@ -29,6 +35,7 @@ export function BehaviorSettingsSection({
     <SettingsGroup title={t.settings.behavior.title}>
       <SettingsToggleRow
         title={t.settings.layout.launchAtStartup}
+        description={launchAtStartupDisabled ? t.settings.layout.launchAtStartupDisabledHint : undefined}
         checked={launchAtStartup}
         onChange={onLaunchAtStartupChange}
       />
@@ -51,6 +58,7 @@ export function BehaviorSettingsSection({
         checked={detachedSettings}
         onChange={onDetachedSettingsChange}
       />
+      {children}
     </SettingsGroup>
   );
 }

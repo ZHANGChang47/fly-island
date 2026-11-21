@@ -1,12 +1,32 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
+import type { LocaleCode } from "../../i18n";
 import { loadDetachedSettings, requestSettingsFocus, type SettingsFocusSection } from "./storage";
 
 // Mirrors SETTINGS_OPEN_REQUESTED_EVENT in src-tauri/src/settings_window/mod.rs: the tray
 // and other windows ask the island to open settings where the user keeps them.
 export const SETTINGS_OPEN_REQUESTED_EVENT = "settings-open-requested";
 /** Same-window request from a part of the island to open its settings page. */
-export const OPEN_SETTINGS_PAGE_EVENT = "focusd-open-settings-page";
+export const OPEN_SETTINGS_PAGE_EVENT = "fly-island-open-settings-page";
+// Mirrors src-tauri/src/tray.rs. Timeout fallback does not emit a saved preference.
+export const TRAY_VISIBILITY_EVENT = "tray-visibility-changed";
+export const TRAY_CHECK_UPDATES_EVENT = "tray-check-updates";
+
+export function setTrayLanguage(language: LocaleCode) {
+  return invoke<void>("set_tray_language", { language });
+}
+
+export function setTrayVisible(visible: boolean) {
+  return invoke<void>("set_tray_visible", { visible });
+}
+
+export function listenTrayVisibilityChanged(handler: (visible: boolean) => void) {
+  return listen<boolean>(TRAY_VISIBILITY_EVENT, (event) => handler(event.payload));
+}
+
+export function listenTrayCheckUpdates(handler: () => void) {
+  return listen(TRAY_CHECK_UPDATES_EVENT, handler);
+}
 
 const isMainWindow = new URLSearchParams(window.location.search).get("window") === null;
 
@@ -52,6 +72,10 @@ export function showSettingsWindow() {
 
 export function readLaunchAtStartup() {
   return invoke<boolean>("get_launch_at_startup");
+}
+
+export function readLaunchAtStartupDisabled() {
+  return invoke<boolean>("is_launch_at_startup_disabled");
 }
 
 export function saveLaunchAtStartup(enabled: boolean) {

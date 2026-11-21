@@ -1,11 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import type { AgentEffortLabels } from "./effortLabels";
 
 // 与 src-tauri/src/agent_status/snapshot.rs 中的 AgentTaskStatus、AgentStatusSnapshot，以及 agent_status/mod.rs 中的 AgentHooksInstallResult 对应。
-export type AgentProvider = "codex" | "claudeCode" | "dsh" | "workbuddy" | "plugin";
+export type AgentProvider = "codex" | "claudeCode" | "dsh" | "workbuddy" | "plugin" | NativeAgentProvider;
+/** Agents installed from the plugin market; Z Code has quota rings but no sessions yet. */
+export type NativeAgentProvider = "cursor" | "kimiCode" | "hermes" | "zcode";
 /** Only these providers install lifecycle hooks and write agent-status.json. */
-export type HookAgentProvider = Exclude<AgentProvider, "dsh" | "workbuddy" | "plugin">;
+export type HookAgentProvider = Exclude<AgentProvider, "dsh" | "workbuddy" | "plugin" | NativeAgentProvider>;
 /** `waiting` (asked the user mid-turn) only comes from the session list, for Claude Code. */
 export type AgentTaskPhase = "idle" | "running" | "waiting" | "completed" | "failed" | "stale";
 
@@ -123,7 +125,7 @@ export type ReplyMarkerState = {
   installed: boolean;
   /** An older wording, or the block still in CLAUDE.md; switching on again replaces it. */
   outdated: boolean;
-  /** The rules file, ~/.claude/rules/focusd-island-reply-marker.md. */
+  /** The rules file, ~/.claude/rules/fly-island-reply-marker.md. */
   path: string;
   /** What switching on writes there. */
   content: string;
@@ -164,9 +166,12 @@ export function getAgentHostIcon(path: string) {
   return invoke<string | null>("get_agent_host_icon", { path });
 }
 
-/** Claude Code and Codex sessions active in the last two hours, running ones first. */
-export function listAgentSessions(windowHours?: number) {
-  return invoke<AgentSessionSummary[]>("list_agent_sessions", { windowHours });
+/**
+ * Recent agent sessions, running ones first. `native` names the plugin-market agents to read too
+ * ("cursor", "kimiCode", "hermes"); the native side reads none of them without it.
+ */
+export function listAgentSessions(windowHours?: number, native: readonly NativeAgentProvider[] = []) {
+  return invoke<AgentSessionSummary[]>("list_agent_sessions", { windowHours, native });
 }
 
 /**
@@ -202,7 +207,7 @@ export type AgentUsage = {
   models: UsageWindow[];
   plan: string | null;
   /** Where the windows come from. */
-  source?: "hud" | "magpie" | "codex" | "claudeDesktop";
+  source?: "hud" | "magpie" | "codex" | "claudeDesktop" | "kimi" | "zcode";
 };
 
 /** Claude usage limits from a local magpie gateway, claude-hud's usage snapshot or the Claude desktop app's usage history; null when there is none. */
@@ -213,6 +218,41 @@ export function getAgentUsage() {
 /** Codex's usage limits from its rollout files; null when none reports them. */
 export function getCodexUsage() {
   return invoke<AgentUsage | null>("get_codex_usage");
+}
+
+/** Kimi Code's plan windows, asked with Kimi Code CLI's own sign-in; null when not signed in. */
+export function getKimiUsage() {
+  return invoke<AgentUsage | null>("get_kimi_usage");
+}
+
+/** Z Code's plan windows or trial balances, preferring the saved Coding Plan key; null when no source exists. */
+export function getZcodeUsage() {
+  return invoke<AgentUsage | null>("get_zcode_usage");
+}
+
+export const ZCODE_USAGE_CHANGED = "zcode-usage-changed";
+export function notifyZcodeUsageChanged(usage: AgentUsage | null) {
+  return emit(ZCODE_USAGE_CHANGED, usage);
+}
+export function onZcodeUsageChanged(callback: (usage: AgentUsage | null) => void) {
+  return listen<AgentUsage | null>(ZCODE_USAGE_CHANGED, ({ payload }) => callback(payload));
+}
+
+export type ZcodeApiPlatform = "bigmodel" | "zai";
+
+/** Mirrors zcode_api_key.rs ApiKeySettings. Only the last four characters of sufficiently long keys are returned. */
+export type ZcodeApiKeySettings = { platform: ZcodeApiPlatform; hasKey: boolean; maskedKey: string | null };
+
+export function getZcodeApiKeySettings() {
+  return invoke<ZcodeApiKeySettings>("get_zcode_api_key_settings");
+}
+
+export function saveZcodeApiKeySettings(platform: ZcodeApiPlatform, apiKey: string | null) {
+  return invoke<ZcodeApiKeySettings>("save_zcode_api_key_settings", { platform, apiKey });
+}
+
+export function clearZcodeApiKey() {
+  return invoke<ZcodeApiKeySettings>("clear_zcode_api_key");
 }
 
 /** Mirrors DshUsage / DshWallet in src-tauri/src/agent_status/dsh_usage.rs. Wallets have no percentage denominator. */

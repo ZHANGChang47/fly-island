@@ -4,6 +4,7 @@ import { SettingsSelect } from "../../components/settings/SettingsSelect";
 import { SettingsSliderRow } from "../../components/settings/SettingsSliderRow";
 import { SettingsToggleRow } from "../../components/settings/SettingsToggleRow";
 import { useTranslation } from "../../i18n";
+import { GLASS_BLUR } from "./settingsLimits";
 import { DEFAULT_SETTINGS, ISLAND_FONT_PERCENT, isGlass, MAX_COLLAPSED_SCALE, MAX_EXPANDED_SCALE, MIN_COLLAPSED_SCALE, MIN_EXPANDED_SCALE } from "./settings";
 import type { ColorScheme, IslandFont, IslandSettings, Material, PageButtonStyle } from "./types";
 
@@ -76,6 +77,21 @@ export function MaterialRows({ settings, onSettingsChange }: RowsProps) {
           onChange={(glassIntensity) => onSettingsChange({ ...settings, glassIntensity })}
         />
       )}
+      {isGlass(settings.material) && (
+        <SettingsSliderRow
+          title={text.glassBlur}
+          description={text.glassBlurHint}
+          value={settings.glassBlur}
+          min={GLASS_BLUR.min}
+          max={GLASS_BLUR.max}
+          step={1}
+          format={percent}
+          defaultValue={GLASS_BLUR.default}
+          resetLabel={t.settings.layout.resetToDefault}
+          indent
+          onChange={(glassBlur) => onSettingsChange({ ...settings, glassBlur })}
+        />
+      )}
     </>
   );
 }
@@ -133,7 +149,7 @@ export function FontRows({ settings, onSettingsChange, onFontSizePreview }: Rows
   );
 }
 
-/** Capsules or icons for the page buttons of the open island. */
+/** The appearance of the open island's page buttons. */
 export function PageButtonsRow({ settings, onSettingsChange }: RowsProps) {
   const text = useTranslation().settings.appearance;
   return (
@@ -145,6 +161,7 @@ export function PageButtonsRow({ settings, onSettingsChange }: RowsProps) {
           options={[
             { value: "capsule", label: text.capsules },
             { value: "icon", label: text.icons },
+            { value: "iconLabel", label: text.iconsAndLabels },
           ]}
           ariaLabel={text.pageButtons}
           onChange={(pageButtonStyle) => onSettingsChange({ ...settings, pageButtonStyle })}
@@ -172,47 +189,44 @@ export function OpacityRow({ settings, onSettingsChange }: RowsProps) {
   );
 }
 
-/** How big the island is collapsed and opened. */
-export function ScaleRows({ settings, onSettingsChange, onPreviewIsland, onExpandedScalePreview }: RowsProps & {
-  /** Called while a size changes, so the island shows that size (collapsed or opened). */
-  onPreviewIsland?: (mode: "collapsed" | "expanded") => void;
+/** Appearance → Size: the collapsed island's overall size. */
+export function CollapsedScaleRow({ settings, onSettingsChange }: RowsProps) {
+  const t = useTranslation();
+  return (
+    <SettingsSliderRow
+      title={t.settings.appearance.collapsedScale}
+      value={settings.collapsedScale}
+      min={MIN_COLLAPSED_SCALE}
+      max={MAX_COLLAPSED_SCALE}
+      step={0.01}
+      format={times}
+      defaultValue={DEFAULT_SETTINGS.collapsedScale}
+      resetLabel={t.settings.layout.resetToDefault}
+      onChange={(collapsedScale) => onSettingsChange({ ...settings, collapsedScale })}
+    />
+  );
+}
+
+/** Appearance → Size: the open island's overall size. */
+export function ExpandedScaleRow({ settings, onSettingsChange, onExpandedScalePreview }: RowsProps & {
   onExpandedScalePreview?: (value: number | null) => void;
 }) {
   const t = useTranslation();
+  // Applied when the thumb is let go: the island (which may hold this very slider) resizes
+  // once, with its spring, rather than on every step of the drag.
   return (
-    <>
-      <SettingsSliderRow
-        title={t.settings.layout.collapsedScale}
-        value={settings.collapsedScale}
-        min={MIN_COLLAPSED_SCALE}
-        max={MAX_COLLAPSED_SCALE}
-        step={0.01}
-        format={times}
-        defaultValue={DEFAULT_SETTINGS.collapsedScale}
-        resetLabel={t.settings.layout.resetToDefault}
-        onChange={(collapsedScale) => {
-          onSettingsChange({ ...settings, collapsedScale });
-          onPreviewIsland?.("collapsed");
-        }}
-      />
-      {/* Applied when the thumb is let go: the island (which may hold this very slider) resizes
-          once, with its spring, rather than on every step of the drag. */}
-      <SettingsSliderRow
-        title={t.settings.layout.expandedScale}
-        value={settings.expandedScale}
-        min={MIN_EXPANDED_SCALE}
-        max={MAX_EXPANDED_SCALE}
-        step={0.01}
-        format={times}
-        defaultValue={DEFAULT_SETTINGS.expandedScale}
-        resetLabel={t.settings.layout.resetToDefault}
-        commitOnRelease
-        onPreviewChange={onExpandedScalePreview}
-        onChange={(expandedScale) => {
-          onSettingsChange({ ...settings, expandedScale });
-          onPreviewIsland?.("expanded");
-        }}
-      />
-    </>
+    <SettingsSliderRow
+      title={t.settings.appearance.expandedScale}
+      value={settings.expandedScale}
+      min={MIN_EXPANDED_SCALE}
+      max={MAX_EXPANDED_SCALE}
+      step={0.01}
+      format={times}
+      defaultValue={DEFAULT_SETTINGS.expandedScale}
+      resetLabel={t.settings.layout.resetToDefault}
+      commitOnRelease
+      onPreviewChange={onExpandedScalePreview}
+      onChange={(expandedScale) => onSettingsChange({ ...settings, expandedScale })}
+    />
   );
 }

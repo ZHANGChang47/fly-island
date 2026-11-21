@@ -2,12 +2,13 @@ import type { IslandSettings } from "../../features/appearance/types";
 import type { PanelPreviewMode } from "./panelPreview";
 
 const COLLAPSED_FIELDS = [
-  "topEdgeShoulders", "topEdgeShoulderSize", "collapsedScale", "collapsedAutoWidth", "collapsedWidth", "collapsedHeight",
-  "collapsedLayout", "collapsedPriority", "collapsedShowCover", "showCollapsedText",
+  "islandShape", "topEdgeShoulders", "topEdgeShoulderSize", "collapsedScale", "collapsedAutoWidth", "collapsedWidth", "collapsedHeight",
+  "collapsedCornerRadius", "collapsedLayout", "collapsedHidden", "collapsedPadding", "collapsedPriority", "collapsedShowCover", "showCollapsedText",
   "islandBackgroundColor", "taskTextColor", "pulseColor", "opacity",
 ] as const satisfies readonly (keyof IslandSettings)[];
 const EXPANDED_FIELDS = [
-  "expandedScale", "fontFamily", "islandFontPercent", "pageButtonStyle", "material", "auroraAura", "glassIntensity", "colorScheme",
+  "expandedScale", "fontFamily", "islandFontPercent", "pageButtonStyle", "material", "auroraAura", "glassIntensity", "colorScheme", "expandedScale", "fontFamily", "islandFontPercent", "pageButtonStyle", "material", "glassIntensity", "glassBlur", "colorScheme",
+  "islandCornerRadius", "islandCornerShape",
   "pageTextColor",
 ] as const satisfies readonly (keyof IslandSettings)[];
 

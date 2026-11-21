@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createTodoId, loadCurrentTodoDate, loadDailyNote, saveCurrentTodoDate, saveDailyNote } from "./storage";
 import type { TodoItem, TodoPageMode } from "./types";
+import type { TodoTimer } from "./timer";
 import { useTodoArchives } from "./useTodoArchives";
 import { useTodoList } from "./useTodoList";
 import { useScheduledTodos } from "./useScheduledTodos";
@@ -14,6 +15,9 @@ type TodosOptions = {
   /** Called after a todo becomes the active one shown on the collapsed island. */
   onStartTodo: () => void;
   onTimerExpired?: () => void;
+  /** Starting a round may ask for a reminder before its end (todoTimerReminder); called when it is due. */
+  timerReminder?: boolean;
+  onTimerReminder?: (round: TodoTimer) => void;
   /** Called when a manual save has no directory to write to. */
   onMissingSaveDirectory: () => void;
 };
@@ -25,6 +29,8 @@ export function useTodos({
   rotateTodos = false,
   onStartTodo,
   onTimerExpired,
+  timerReminder = false,
+  onTimerReminder,
   onMissingSaveDirectory,
 }: TodosOptions) {
   const [todoPageMode, setTodoPageMode] = useState<TodoPageMode>("today");
@@ -32,7 +38,7 @@ export function useTodos({
     setTodoPageMode("today");
     onTimerExpired?.();
   }, [onTimerExpired]);
-  const list = useTodoList(onStartTodo, handleTimerExpired, todoTimerEnabled, rotateTodos);
+  const list = useTodoList(onStartTodo, handleTimerExpired, todoTimerEnabled, rotateTodos, onTimerReminder, timerReminder);
   const timerTodoIds = useMemo(() => list.timers.map((timer) => timer.todoId), [list.timers]);
   const { todos, setTodos, setDraftTodo, activeTodoId, setActiveTodoIds } = list;
   const [dailyNote, setDailyNote] = useState(loadDailyNote);
@@ -57,13 +63,18 @@ export function useTodos({
     }
     setDraftDate(null);
   }, [addListTodo, currentTodoDate, draftDate, draftTodo, scheduleTodo, setDraftTodo]);
-  const { saveDirectory, saveState, saveTodosToDisk, saveTodayTodos } =
+  const importMarkdown = useCallback((document: { todos: TodoItem[]; dailyNote: string }) => {
+    setTodos(document.todos);
+    setDailyNote(document.dailyNote);
+  }, [setTodos]);
+  const { saveDirectory, saveState, saveTodosToDisk, saveTodayTodos, fileSyncEnabled } =
     useTodoSaving({
       currentTodoDate,
       todos,
       dailyNote,
       upsertArchive,
       onMissingSaveDirectory,
+      onImport: importMarkdown,
     });
 
   const showToday = useCallback(() => {
@@ -112,6 +123,7 @@ export function useTodos({
     timerTodoIds,
     saveDirectory,
     saveTodosToDisk,
+    fileSyncEnabled,
     upsertArchive,
     onStartDay: startDay,
   });
@@ -142,6 +154,7 @@ export function useTodos({
       durations: list.durations,
       onDurationChange: list.chooseDuration,
       todoTimerEnabled,
+      timerReminder,
       currentDate: currentTodoDate,
       pageMode: todoPageMode,
       archives,

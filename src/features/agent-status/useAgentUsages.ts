@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { SessionFilter } from "./sessionList";
-import { dshProblem, getAgentUsage, getCodexUsage, getDshUsage } from "./api";
+import { dshProblem, getAgentUsage, getCodexUsage, getDshUsage, getKimiUsage, getZcodeUsage, onZcodeUsageChanged } from "./api";
 import { EMPTY_USAGES, withoutPastWindows, type AgentUsages } from "./usage";
 import { usePlugins } from "../plugins";
 
@@ -19,6 +19,9 @@ export function useAgentUsages(enabled: boolean, show: SessionFilter = ALL_SOURC
   const showClaude = show.claudeCode !== false;
   const showCodex = show.codex !== false;
   const showDsh = show.dsh !== false;
+  // Plugin-market agents are asked only when the caller names them: they query a web service.
+  const showKimi = show.kimiCode === true;
+  const showZcode = show.zcode === true;
 
   useEffect(() => {
     if (!enabled) {
@@ -26,7 +29,10 @@ export function useAgentUsages(enabled: boolean, show: SessionFilter = ALL_SOURC
       return;
     }
     let cancelled = false;
+    let zcodeRevision = 0;
+    let unlisten: (() => void) | undefined;
     const refresh = () => {
+      const revision = zcodeRevision;
       const log = (what: string) => (error: unknown) => {
         console.error(`Failed to read the ${what} usage`, error);
         return null;
@@ -35,25 +41,42 @@ export function useAgentUsages(enabled: boolean, show: SessionFilter = ALL_SOURC
         showClaude ? getAgentUsage().catch(log("Claude")) : Promise.resolve(null),
         showCodex ? getCodexUsage().catch(log("Codex")) : Promise.resolve(null),
         showDsh ? getDshUsage().then((usage) => ({ usage, problem: null }), (error: unknown) => ({ usage: null, problem: dshProblem(error) })) : Promise.resolve(null),
-      ]).then(([claude, codex, dsh]) => {
+        showKimi ? getKimiUsage().catch(log("Kimi Code")) : Promise.resolve(null),
+        showZcode ? getZcodeUsage().catch(log("Z Code")) : Promise.resolve(null),
+      ]).then(([claude, codex, dsh, kimi, zcode]) => {
         if (cancelled) return;
         const now = Date.now();
-        setUsages({
+        setUsages((previous) => ({
           claude: withoutPastWindows(claude ?? null, now),
           codex: withoutPastWindows(codex ?? null, now),
           dsh: dsh?.usage ?? null,
           dshProblem: dsh?.problem ?? null,
+          kimi: withoutPastWindows(kimi ?? null, now),
+          zcode: revision === zcodeRevision ? withoutPastWindows(zcode ?? null, now) : previous.zcode,
           readAt: now,
-        });
+        }));
       });
     };
+    if (showZcode) {
+      void onZcodeUsageChanged((usage) => {
+        if (cancelled) return;
+        // A poll started before a settings change must not overwrite the newly checked quota.
+        zcodeRevision += 1;
+        const now = Date.now();
+        setUsages((previous) => ({ ...previous, zcode: withoutPastWindows(usage, now), readAt: now }));
+      }).then((stop) => {
+        if (cancelled) stop();
+        else unlisten = stop;
+      }).catch(() => undefined);
+    }
     refresh();
     const timer = window.setInterval(refresh, REFRESH_MS);
     return () => {
       cancelled = true;
+      unlisten?.();
       window.clearInterval(timer);
     };
-  }, [enabled, showClaude, showCodex, showDsh]);
+  }, [enabled, showClaude, showCodex, showDsh, showKimi, showZcode]);
 
   return useMemo(() => ({
     ...usages,
@@ -61,6 +84,8 @@ export function useAgentUsages(enabled: boolean, show: SessionFilter = ALL_SOURC
     codex: enabled && showCodex ? usages.codex : null,
     dsh: enabled && showDsh ? usages.dsh : null,
     dshProblem: enabled && showDsh ? usages.dshProblem : null,
+    kimi: enabled && showKimi ? usages.kimi : null,
+    zcode: enabled && showZcode ? usages.zcode : null,
     plugins: enabled ? Object.entries(plugins.live).flatMap(([id, live]) => plugins.registry.installed[id]?.enabled && live.status === "running" ? live.quota.map((q) => ({ ...q, id: `${id}/${q.id}` })) : []) : [],
-  }), [enabled, usages, showClaude, showCodex, showDsh, plugins]);
+  }), [enabled, usages, showClaude, showCodex, showDsh, showKimi, showZcode, plugins]);
 }

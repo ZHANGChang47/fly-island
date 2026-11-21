@@ -1,9 +1,14 @@
+import { Fragment } from "react";
 import { SettingsGroup } from "../../components/settings/SettingsGroup";
 import { SettingsToggleRow } from "../../components/settings/SettingsToggleRow";
 import { AgentAlertSettings } from "../../features/agent-status/AgentAlertSettings";
 import { AgentHooksNotice } from "../../features/agent-status/AgentHooksNotice";
 import { AgentQuotaSettings } from "../../features/agent-status/AgentQuotaSettings";
+import { ZcodeApiKeySettingsRow } from "../../features/agent-status/ZcodeApiKeySettingsRow";
 import { WorkbuddySignInRow } from "../../features/agent-status/WorkbuddySignInRow";
+import { NATIVE_AGENTS, useNativeAgents } from "../../features/agent-status/nativeAgents";
+import { AGENT_PROVIDER_LABELS } from "../../features/agent-status/status";
+import { useNativePlugins } from "../../features/plugins";
 import type { IslandSettings } from "../../features/appearance/types";
 import { useTranslation } from "../../i18n";
 import { ModuleSwitchSection } from "./ModuleSwitchSection";
@@ -24,6 +29,8 @@ export function AgentSettingsPage({
   onOpenConnect: () => void;
 }) {
   const t = useTranslation();
+  const installed = useNativePlugins();
+  const native = useNativeAgents(settings);
 
   return (
     <>
@@ -55,8 +62,16 @@ export function AgentSettingsPage({
           onChange={(agentShowWorkbuddy) => onSettingsChange({ ...settings, agentShowWorkbuddy })}
         />
         {settings.agentShowWorkbuddy && <WorkbuddySignInRow polling={settings.agentStatusEnabled && settings.agentQuotaSources.includes("workbuddy")} />}
+        {NATIVE_AGENTS.filter((agent) => installed[agent.id]).map(({ id, setting }) => (
+          <Fragment key={id}>
+            <SettingsToggleRow title={AGENT_PROVIDER_LABELS[id]} description={t.settings.agent.sources.native[id]}
+              checked={settings[setting]} onChange={(checked) => onSettingsChange({ ...settings, [setting]: checked })} />
+            {id === "zcode" && <ZcodeApiKeySettingsRow polling={settings.agentStatusEnabled && native.zcode && (settings.agentQuotaSources.includes("zcode") || settings.agentQuotaAlertPercent > 0)} />}
+          </Fragment>
+        ))}
       </SettingsGroup>
-      <AgentQuotaSettings sources={settings.agentQuotaSources} onChange={(agentQuotaSources) => onSettingsChange({ ...settings, agentQuotaSources })} />
+      <AgentQuotaSettings sources={settings.agentQuotaSources} offered={(source) => source === "kimiCode" || source === "zcode" ? native[source] : true}
+        onChange={(agentQuotaSources) => onSettingsChange({ ...settings, agentQuotaSources })} />
       <SettingsGroup title={t.settings.agent.sessionTitleSection}>
         <SettingsToggleRow
           title={t.settings.agent.sessionTitle}

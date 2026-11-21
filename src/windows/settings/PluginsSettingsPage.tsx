@@ -9,12 +9,20 @@ import { SettingsLinkButton } from "../../components/settings/SettingsLinkButton
 import { PluginSettingRow } from "../../features/plugins/PluginSettingRow";
 import { usePlugins, refreshPlugins } from "../../features/plugins/usePlugins";
 import { PLUGINS_ENABLED } from "../../features/plugins";
+import { PLUGIN_MARKET_ENABLED } from "../../features/releaseFlags.ts";
 import { configurePlugins, getPluginsIndex, installPlugin, loadDevelopmentPlugin, PLUGIN_INDEX_UNAVAILABLE, runPluginAction, setPluginEnabled, setPluginSetting, uninstallPlugin, type PluginIndexEntry } from "../../features/plugins/api";
 import { useLocale, useTranslation } from "../../i18n";
+import { PluginDevelopmentPage } from "./PluginDevelopmentPage";
+import { PluginMarket } from "./PluginMarket";
+import type { IslandSettings } from "../../features/appearance/types";
 import "./PluginsSettingsPage.css";
 
-export function PluginsSettingsPage() {
-  return PLUGINS_ENABLED ? <EnabledPluginsSettingsPage /> : null;
+/** The built-in plugin market comes first; the external data host below follows the release flag. */
+export function PluginsSettingsPage({ settings, onSettingsChange }: { settings: IslandSettings; onSettingsChange: (settings: IslandSettings) => void }) {
+  return <div className="plugins-page">
+    {PLUGIN_MARKET_ENABLED && <PluginMarket settings={settings} onSettingsChange={onSettingsChange} />}
+    {PLUGINS_ENABLED ? <EnabledPluginsSettingsPage /> : <PluginDevelopmentPage />}
+  </div>;
 }
 
 function EnabledPluginsSettingsPage() {
@@ -79,7 +87,7 @@ function EnabledPluginsSettingsPage() {
         <SettingsRow title={t.index} control={<SettingsLinkButton disabled={busy} onClick={() => { void perform(async () => { await configurePlugins(true, index ?? registry.indexUrl); setIndex(null); }); }}>{t.save}</SettingsLinkButton>}><SettingsInput aria-label={t.index} value={index ?? registry.indexUrl} onChange={(e) => setIndex(e.target.value)} /></SettingsRow>
         <SettingsRow title={t.directory} control={<SettingsLinkButton disabled={busy || !directory} onClick={() => { void perform(() => loadDevelopmentPlugin(directory)); }}>{t.load}</SettingsLinkButton>}><SettingsInput aria-label={t.directory} value={directory} onChange={(e) => setDirectory(e.target.value)} /></SettingsRow>
       </>}
-      <SettingsRow title={t.develop} control={<SettingsLinkButton ariaLabel={t.develop} onClick={() => { void openUrl("https://github.com/flyl1u/fly-island/blob/main/docs/plugins/quickstart.md").catch(console.error); }}><ArrowUpRight size={16} aria-hidden="true" /></SettingsLinkButton>} />
+      <SettingsRow title={t.develop} control={<SettingsLinkButton ariaLabel={t.develop} onClick={() => { void openUrl("https://github.com/flyl1u/fly-island/blob/main/docs/plugins/README.md").catch(console.error); }}><ArrowUpRight size={16} aria-hidden="true" /></SettingsLinkButton>} />
     </SettingsGroup></details>
   </section>;
 }

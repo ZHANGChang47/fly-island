@@ -2,10 +2,12 @@
 
 mod hotkey;
 mod image_access;
+mod location;
 mod selection;
 mod service;
 mod store;
 mod thumbnails;
+pub(crate) mod transfer;
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -17,7 +19,8 @@ use tauri::{AppHandle, Manager};
 
 use service::{notify_clipboard_changed, start_workers};
 pub(crate) use service::copy_transient_text;
-use store::{load_history, HISTORY_FILE_NAME, IMAGE_DIRECTORY_NAME};
+use location::{custom_directory, ClipboardStorageInfo, StorageLocation};
+use store::load_history;
 
 pub(crate) use hotkey::parse_shortcut_binding;
 
@@ -128,6 +131,10 @@ pub struct ClipboardHistoryItem {
     preview: String,
     text: Option<String>,
     image: Option<ClipboardHistoryImage>,
+    /// Files from CF_HDROP. Pure image captures may retain these paths for file-compatible
+    /// copy-back; other file-list captures remain text items whose text contains one path per line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    files: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -151,8 +158,10 @@ struct ClipboardHistoryState {
 
 struct ClipboardHistoryService {
     app: AppHandle,
-    history_path: PathBuf,
-    image_dir: PathBuf,
+    /// The app data folder: the default location, and where the pointer to another one lives.
+    app_dir: PathBuf,
+    /// Changes when the user moves the history (location.rs); lock after `state`.
+    location: Mutex<StorageLocation>,
     state: Mutex<ClipboardHistoryState>,
 }
 
@@ -174,37 +183,61 @@ pub fn set_clipboard_history_settings(
     service()?.set_settings(settings)
 }
 
-#[tauri::command]
-pub fn copy_clipboard_history_item(id: String) -> Result<ClipboardHistorySnapshot, String> {
-    service()?.copy_item(&id)
+/// Runs a history change off the main thread. These open the system clipboard (retrying
+/// while another app holds it), decode images and write the history file; as plain commands
+/// they ran on the main thread, and a clipboard or disk slow to answer (just after waking from
+/// sleep) froze every island window with them (#76).
+async fn off_main_thread(
+    work: impl FnOnce(&ClipboardHistoryService) -> Result<ClipboardHistorySnapshot, String> + Send + 'static,
+) -> Result<ClipboardHistorySnapshot, String> {
+    tauri::async_runtime::spawn_blocking(move || work(service()?))
+        .await
+        .map_err(|error| format!("Failed to join the clipboard history task: {error}"))?
 }
 
 #[tauri::command]
-pub fn toggle_clipboard_history_favorite(id: String) -> Result<ClipboardHistorySnapshot, String> {
-    service()?.toggle_favorite(&id)
+pub async fn copy_clipboard_history_item(id: String) -> Result<ClipboardHistorySnapshot, String> {
+    off_main_thread(move |service| service.copy_item(&id)).await
 }
 
 #[tauri::command]
-pub fn set_clipboard_history_item_note(
+pub async fn toggle_clipboard_history_favorite(id: String) -> Result<ClipboardHistorySnapshot, String> {
+    off_main_thread(move |service| service.toggle_favorite(&id)).await
+}
+
+#[tauri::command]
+pub async fn set_clipboard_history_item_note(
     id: String,
     note: String,
 ) -> Result<ClipboardHistorySnapshot, String> {
-    service()?.set_note(&id, &note)
+    off_main_thread(move |service| service.set_note(&id, &note)).await
 }
 
 #[tauri::command]
-pub fn delete_clipboard_history_item(id: String) -> Result<ClipboardHistorySnapshot, String> {
-    service()?.delete_item(&id)
+pub async fn delete_clipboard_history_item(id: String) -> Result<ClipboardHistorySnapshot, String> {
+    off_main_thread(move |service| service.delete_item(&id)).await
 }
 
 #[tauri::command]
-pub fn clear_clipboard_history() -> Result<ClipboardHistorySnapshot, String> {
-    service()?.clear()
+pub async fn clear_clipboard_history() -> Result<ClipboardHistorySnapshot, String> {
+    off_main_thread(|service| service.clear()).await
 }
 
 #[tauri::command]
 pub async fn delete_clipboard_history_items(ids: Vec<String>) -> Result<ClipboardHistorySnapshot, String> {
     service()?.delete_items(&ids)
+}
+
+/// Where the history is stored, and the default (the app data folder).
+#[tauri::command]
+pub fn get_clipboard_storage_directory() -> Result<ClipboardStorageInfo, String> {
+    service()?.storage_info()
+}
+
+/// Moves the history and its images to `directory`; empty moves them back to the default.
+#[tauri::command]
+pub async fn set_clipboard_storage_directory(directory: String) -> Result<ClipboardStorageInfo, String> {
+    service()?.move_storage(&directory)
 }
 
 #[tauri::command]
@@ -236,18 +269,19 @@ pub fn init(app: &AppHandle) -> Result<(), String> {
         .path()
         .app_data_dir()
         .map_err(|error| format!("Failed to resolve app data directory: {error}"))?;
-    let history_path = app_dir.join(HISTORY_FILE_NAME);
-    let image_dir = app_dir.join(IMAGE_DIRECTORY_NAME);
+    // A folder the user picked that is gone (an unplugged drive) falls back to the app data
+    // folder for this run, without forgetting the choice.
+    let location = StorageLocation::in_dir(&custom_directory(&app_dir).unwrap_or_else(|| app_dir.clone()));
 
-    fs::create_dir_all(&image_dir)
+    fs::create_dir_all(&location.image_dir)
         .map_err(|error| format!("Failed to create clipboard history directory: {error}"))?;
 
-    let mut persisted = load_history(&history_path);
-    let moved_thumbnails = thumbnails::externalize_inline_thumbnails(&mut persisted.items, &image_dir);
+    let mut persisted = load_history(&location.history_path);
+    let moved_thumbnails = thumbnails::externalize_inline_thumbnails(&mut persisted.items, &location.image_dir);
     let service = ClipboardHistoryService {
         app: app.clone(),
-        history_path,
-        image_dir,
+        app_dir,
+        location: Mutex::new(location),
         state: Mutex::new(ClipboardHistoryState {
             settings: persisted.settings.normalized(),
             items: persisted.items,
@@ -296,6 +330,8 @@ macro_rules! tauri_commands {
             crate::clipboard_history::clear_clipboard_history,
             crate::clipboard_history::delete_clipboard_history_items,
             crate::clipboard_history::read_clipboard_history_image,
+            crate::clipboard_history::get_clipboard_storage_directory,
+            crate::clipboard_history::set_clipboard_storage_directory,
             crate::clipboard_history::read_clipboard_history_thumbnail,
             crate::clipboard_history::show_clipboard_history_island,
         ] $($rest)*)
