@@ -57,6 +57,7 @@ export function normalizeBehaviorSettings(settings: LegacyIslandSettings | null 
     shelfEnabled: settings?.shelfEnabled !== false,
     searchEnabled: settings?.searchEnabled !== false,
     translationEnabled: settings?.translationEnabled !== false,
+    calculatorEnabled: settings?.calculatorEnabled !== false,
     shelfAutoCleanupDays: oneOf(SHELF_CLEANUP_DAYS, settings?.shelfAutoCleanupDays, DEFAULT_SETTINGS.shelfAutoCleanupDays),
     ...normalizeLyricsSettings(settings),
     mailEnabled: settings?.mailEnabled !== false,

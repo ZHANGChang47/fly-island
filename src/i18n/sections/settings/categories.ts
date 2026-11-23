@@ -21,6 +21,7 @@ export type SettingsCategoriesText = {
   /** The island's file search page and its global shortcut. */
   search: string;
   translation: string;
+  calculator: string;
   /** The file shelf's group on the Clipboard page. */
   shelf: string;
   /** The AI Agent group's pages. */
@@ -49,6 +50,7 @@ export const zhCN: SettingsCategoriesText = {
   clipboard: "剪贴板与文件",
   search: "文件搜索",
   translation: "翻译",
+  calculator: "计算器",
   shelf: "文件中转",
   agents: "AI 会话",
   agentConnect: "接入 AI 工具",
@@ -75,6 +77,7 @@ export const en: SettingsCategoriesText = {
   clipboard: "Clipboard & files",
   search: "File search",
   translation: "Translation",
+  calculator: "Calculator",
   shelf: "File shelf",
   agents: "AI sessions",
   agentConnect: "Connect AI tools",

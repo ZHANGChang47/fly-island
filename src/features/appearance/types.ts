@@ -55,7 +55,7 @@ export type CollapsedItem = "agent" | "lyrics" | "todo";
  */
 export type CollapsedSlot = "pulse" | "text" | "mail" | "shelf" | "music" | "agents" | "clock" | "weather";
 /** The page dots in the expanded island's header, which the user can drag into any order. */
-export type PageDot = "todo" | "music" | "clipboard" | "shelf" | "search" | "translation";
+export type PageDot = "todo" | "music" | "clipboard" | "shelf" | "search" | "translation" | "calculator";
 
 export type IslandSettings = {
   topEdgeLayoutVersion: 1;
@@ -210,6 +210,8 @@ export type IslandSettings = {
   translationEnabled: boolean;
   /** Where translation opens: its own window, or a page of the expanded island. */
   translationTarget: TranslationTarget;
+  /** Off hides the calculator page and its header dot. */
+  calculatorEnabled: boolean;
   /** Dragging files onto a collapsed or tucked island opens the shelf as a drop zone. */
   shelfExpandOnDrop: boolean;
   /** Days after which shelf entries leave the list (0 keeps them). */

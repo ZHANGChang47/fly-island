@@ -141,6 +141,7 @@ export function IslandHeader({
     shelf: t.island.shelf,
     search: t.fileSearch.title,
     translation: t.translator.title,
+    calculator: t.calculator.title,
   };
   const reorderDots = useCallback(
     (next: PageDot[]) => onPageOrderChange([...next, ...pageOrder.filter((dot) => !next.includes(dot))]),

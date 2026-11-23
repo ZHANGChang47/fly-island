@@ -10,6 +10,7 @@ import { openSettingsWindow } from "../settings/api";
 import { SettingsPanel } from "../settings/SettingsPanel";
 import "../settings/IslandSettingsPage.css";
 import { TranslationPanel } from "../../features/translation/TranslationPanel";
+import { CalculatorPanel } from "../../features/calculator/CalculatorPanel";
 import { AgentSessionsPanel } from "../../features/agent-status/AgentSessionsPanel";
 import type { AgentSessionSummary } from "../../features/agent-status/api";
 import type { UnseenSessions } from "../../features/agent-status/useUnseenSessions";
@@ -146,6 +147,7 @@ export function IslandPages({
       )}
       {page === "agents" && <AgentSessionsPanel sessions={agentSessions} view={settings.agentSessionView} sort={settings.agentSessionSort} group={settings.agentSessionGroup} archiveMotion={settings.agentArchiveMotion} cardEffects={settings.agentCardEffects} hostDisplay={settings.agentHostDisplay} showElapsed={settings.agentShowElapsed} showModel={settings.agentShowModel} showActivity={settings.agentShowActivity} unseen={unseenAgentSessions} removal={agentRemoval} reveal={alertedSession} showUsage={settings.agentShowUsage} usages={agentUsages} approvals={agentApprovals} />}
       {page === "translation" && <TranslationPanel isOpen={mode === "expanded"} onOpenSettings={() => openSettingsWindow("translation")} />}
+      {page === "calculator" && <CalculatorPanel isOpen={mode === "expanded"} />}
       {page === "shelf" && <FileShelfPanel shelf={fileShelf} isDropTarget={isShelfDropping} revealOnDoubleClick={settings.shelfDoubleClick === "reveal"} />}
       {page === "search" && <FileSearchPanel />}
       {page === "plugin:device-battery"

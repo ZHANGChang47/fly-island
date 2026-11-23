@@ -16,6 +16,7 @@ import { ClockWeatherSettingsPage } from "./ClockWeatherSettingsPage";
 import { SETTINGS_FOCUS_STORAGE_KEY, takeFocusRequest, requestPanelPreview } from "./storage";
 import { TodosSettingsPage } from "./TodosSettingsPage";
 import { TranslationSettingsPage } from "./TranslationSettingsPage";
+import { CalculatorSettingsPage } from "./CalculatorSettingsPage";
 import { AboutSettingsPage } from "./AboutSettingsPage";
 import { DEFAULT_SETTINGS, withAppearanceFrom } from "../../features/appearance/settings";
 import { ResetAppearanceButton } from "../../features/appearance/ResetAppearanceButton";
@@ -139,6 +140,7 @@ export function SettingsPanel({
         <MessagesSettingsPage settings={settings} qqNotifications={qqNotifications} wechatReminders={wechatReminders} onSettingsChange={setSettings} />
       )}
       {activeCategory === "translation" && <TranslationSettingsPage settings={settings} onSettingsChange={setSettings} />}
+      {activeCategory === "calculator" && <CalculatorSettingsPage settings={settings} onSettingsChange={setSettings} />}
       {activeCategory === "clipboard" && <ClipboardSettingsPage settings={settings} onSettingsChange={setSettings} />}
       {activeCategory === "search" && <SearchSettingsPage settings={settings} onSettingsChange={setSettings} />}
       {activeCategory === "music" && <MusicSettingsPage settings={settings} onSettingsChange={setSettings} />}

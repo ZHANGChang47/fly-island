@@ -1,4 +1,4 @@
-import { Clipboard, FolderInput, Languages, ListChecks, Music2, Search, type LucideIcon } from "lucide-react";
+import { Calculator, Clipboard, FolderInput, Languages, ListChecks, Music2, Search, type LucideIcon } from "lucide-react";
 import type { PageDot } from "./types";
 
 export const PAGE_ICONS: Record<PageDot, LucideIcon> = {
@@ -8,4 +8,5 @@ export const PAGE_ICONS: Record<PageDot, LucideIcon> = {
   shelf: FolderInput,
   search: Search,
   translation: Languages,
+  calculator: Calculator,
 };

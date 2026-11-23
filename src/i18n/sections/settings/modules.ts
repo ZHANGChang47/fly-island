@@ -8,6 +8,7 @@ export type SettingsModulesText = {
   shelf: string;
   search: string;
   translation: string;
+  calculator: string;
   clipboard: string;
 };
 
@@ -21,6 +22,7 @@ export const zhCN: SettingsModulesText = {
   shelf: "启用文件中转",
   search: "启用文件搜索",
   translation: "启用快捷翻译",
+  calculator: "启用计算器",
   clipboard: "启用剪贴板历史",
 };
 
@@ -34,5 +36,6 @@ export const en: SettingsModulesText = {
   shelf: "Enable the file shelf",
   search: "Enable file search",
   translation: "Enable quick translation",
+  calculator: "Enable the calculator",
   clipboard: "Enable clipboard history",
 };

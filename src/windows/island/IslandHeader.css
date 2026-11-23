@@ -177,6 +177,12 @@
   --dot-glow: rgba(255, 154, 118, 0.46);
 }
 
+.dot-button--calculator {
+  /* Mint: the keypad page reads as a tool rather than a message source. */
+  --dot-color: #8fe0b4;
+  --dot-glow: rgba(143, 224, 180, 0.46);
+}
+
 .dot-button--messages {
   --dot-color: #e58ee2;
   --dot-glow: rgba(229, 142, 226, 0.44);

@@ -31,6 +31,8 @@ export function getShelfExpandedHeight(items: number) {
 const TRANSLATION_EXPANDED_ISLAND_HEIGHT = 420;
 // Search: input, hint line, status line and about six result rows before the list scrolls.
 const SEARCH_EXPANDED_ISLAND_HEIGHT = 520;
+// Calculator: display with the result, five keypad rows, the equals bar and the history strip.
+const CALCULATOR_EXPANDED_ISLAND_HEIGHT = 420;
 // Settings fit their open page (useSettingsPageHeight): the island's padding, header and gap
 // around it, between a floor that keeps short pages from looking cramped and about the tallest
 // island the window allows, past which the page scrolls. The fallback before the first measure.
@@ -157,6 +159,8 @@ export function getExpandedIslandHeight({
         ? Math.min(SEARCH_EXPANDED_ISLAND_HEIGHT, maxPanelHeight)
       : page === "translation"
         ? Math.min(TRANSLATION_EXPANDED_ISLAND_HEIGHT, maxPanelHeight)
+      : page === "calculator"
+        ? Math.min(CALCULATOR_EXPANDED_ISLAND_HEIGHT, maxPanelHeight)
       : page === "agents"
         ? agentAlertRowHeight !== undefined
           ? getAgentAlertExpandedHeight(agentAlertRowHeight)

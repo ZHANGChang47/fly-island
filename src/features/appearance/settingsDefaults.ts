@@ -130,6 +130,7 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   searchEnabled: true,
   translationEnabled: true,
   translationTarget: "island",
+  calculatorEnabled: true,
   shelfExpandOnDrop: true,
   shelfAutoCleanupDays: 0,
   shelfRemoveMissing: true,

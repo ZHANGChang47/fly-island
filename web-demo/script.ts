@@ -15,6 +15,7 @@ export const PAGE_BUTTONS: Record<IslandPage, string> = {
   qq: ".dot-button--messages, .island-message-button",
   // A page capsule since the translate button became one; the header button before that.
   translation: ".dot-button--translation, .island-translate-button",
+  calculator: ".dot-button--calculator",
   agents: ".island__agent-button",
   settings: ".island-settings-button",
 };
