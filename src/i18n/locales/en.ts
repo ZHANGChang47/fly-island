@@ -1,3 +1,4 @@
+import { en as deviceBattery } from "../sections/deviceBattery.ts";
 import type { Translations } from "../types";
 import * as common from "../sections/common.ts";
 import * as messages from "../sections/messages.ts";
@@ -15,6 +16,8 @@ import * as clipboard from "../sections/clipboard.ts";
 import * as fileShelf from "../sections/fileShelf.ts";
 import * as fileSearch from "../sections/fileSearch.ts";
 import * as filePreview from "../sections/filePreview.ts";
+import * as eyeCare from "../sections/eyeCare.ts";
+import * as pluginPanel from "../sections/pluginPanel.ts";
 import * as settings from "../sections/settings/index.ts";
 
 const en: Translations = {
@@ -47,6 +50,10 @@ const en: Translations = {
   fileSearch: fileSearch.en,
 
   filePreview: filePreview.en,
+
+  pluginPanel: pluginPanel.en,
+  eyeCare: eyeCare.en,
+  deviceBattery,
 
   settings: settings.en,
 };

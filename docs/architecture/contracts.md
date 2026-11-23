@@ -32,9 +32,9 @@ Codex 会话摘要（2026-11-15）：`list_agent_sessions` 可选返回 `lastCom
 
 `fly-island-settings` 的待办轮换字段兼容旧记录：`rotateTodos` 默认 false、`showIdleTodoCount` 默认 true、`todoRotationSeconds` 默认 5（1–60）、`todoRotationMode` 默认 `switch`（`switch` / `scroll`）、`todoScrollSpeed` 默认 20（10–40 逻辑像素/秒）。`todoRotationCount` 已移除，旧记录中的该字段忽略且不再写回。轮换候选为全部已开始且未完成的普通待办，按列表顺序显示；缺失或非法设置由 normalize 回退。
 
-待办并行状态兼容扩展（2026-11-15）：开启轮换后，开始任务追加到 `fly-island-active-todos`（去重的字符串 ID 数组，顺序为开始顺序），倒计时独立保存到 `fly-island-todo-timers`（`{ todoId, endsAt, durationMinutes, notified }[]`，每项 ID 唯一）。首次读取若新键缺失、JSON 损坏或根类型错误，则从旧 `fly-island-active-todo` 字符串和 `fly-island-todo-timer` 单对象兼容读取；新键中的空数组表示已停止，不恢复旧值。非法数组项忽略，通知标记缺失按 false。原待办列表数据格式不变。
+待办并行状态保存到 `fly-island-active-todos`（去重的字符串 ID 数组，首项为主任务）和 `fly-island-todo-timers`（独立计时对象数组 `{ todoId, endsAt, durationMinutes, notified }[]`，每项 ID 唯一）。首次读取若新键缺失、JSON 损坏或根类型错误，则从旧 `fly-island-active-todo` 字符串和 `fly-island-todo-timer` 单对象兼容读取。新键中的空数组表示已停止。非法数组项忽略，通知标记缺失按 false。
 
-新旧键同步写入：第一个开始的活动 ID 作为主任务，旧 `fly-island-active-todo` 仍写字符串；旧 `fly-island-todo-timer` 仅保存主任务的计时对象，主任务无计时或没有活动任务时删除。关闭轮换保留主任务，停止其他任务并清除其倒计时；之后开始另一项按原单任务规则替换、清除旧计时并收起岛屿。轮换开启时开始/再来一轮保持展开，再次点击停止仅清除该任务。完成、删除或无效 ID 均会从活动状态及计时中移除；关闭番茄钟清空全部计时但保留活动任务。每轮首次到时前写入 `notified: true`；同一次检查中多项到时一起标记、提醒一次。跨天保留所有计时中或已到时待处理任务的 ID 与结束时间。
+旧 `fly-island-active-todo` 同步主任务 ID，旧 `fly-island-todo-timer` 同步主任务的计时对象。轮换开启时，新增活动任务按开始顺序追加，岛屿保持展开。轮换关闭时，保留主任务和其他有计时的任务。开始任务或再来一轮时，该任务成为主任务，岛屿收起。停止、完成或删除只清除对应任务的计时。关闭番茄钟清空全部计时，活动任务仍遵循轮换设置。每轮首次提示前写入 `notified: true`，同一次检查中多项到时一起标记、合响一次。跨天保留所有计时中或已到时待处理任务的 ID 与结束时间。
 
 | key | 当前定义位置 |
 |---|---|
@@ -49,7 +49,7 @@ Codex 会话摘要（2026-11-15）：`list_agent_sessions` 可选返回 `lastCom
 | `fly-island-setting-presets`（2026-11-09 起不再读写：样式预设已去掉，旧数据留着不动） | — |
 | `fly-island-todos` | `features/todos/storage.ts` |
 | `fly-island-active-todo`（主任务 ID 字符串，兼容原单任务格式） | `features/todos/storage.ts` |
-| `fly-island-active-todos`（全部活动 ID 数组，按开始顺序；无新数据时兼容读取旧单 ID） | `features/todos/storage.ts` |
+| `fly-island-active-todos`（全部活动 ID 数组，首项为主任务。无新数据时兼容读取旧单 ID） | `features/todos/storage.ts` |
 | `fly-island-todo-timer`（主任务倒计时：`{ todoId, endsAt, durationMinutes, notified }`，`endsAt` 为 Unix 毫秒时间；保留原单对象格式） | `features/todos/storage.ts` |
 | `fly-island-todo-timers`（各任务独立倒计时对象数组；无新数据时兼容读取旧单对象） | `features/todos/storage.ts` |
 | `fly-island-todo-remind-minutes`（上次实际选择的提前提醒分钟数，0–60 的整数；缺失或非法按 5；0 表示不提醒） | `features/todos/storage.ts` |
@@ -99,6 +99,10 @@ Codex 会话摘要（2026-11-15）：`list_agent_sessions` 可选返回 `lastCom
 ## 媒体诊断命令
 
 新增命令 `get_media_diagnostics()` 返回 `{ players }`：逐会话的 `sourceAppId`、`label`、`hasSession`、`hasTimeline`、`hasPluginTrackId`、`exePath`、`directory`、`version`、`status` 与 `neteasePluginState`（非网易云为 null），并补入正在运行但没有会话的已知播放器。只读检查，不安装插件。`get_media_state` 新增 `hasTimeline` 布尔字段；前端兼容缺少字段的旧状态，估算位置始终保留 false 标记。
+
+## 本机字体
+
+`list_installed_fonts(locale)` 按需读取 Windows DirectWrite 中已安装的字体。返回 `{ family, label }[]`，`family` 用于设置与 CSS，`label` 为本地化显示名。`fly-island-settings.fontFamily` 增加 `"local"`，对应名称保存在 `localFontFamily`。两项均可随外观预设保存。
 
 ## 微信只读探测输出
 
@@ -183,6 +187,7 @@ Codex 会话摘要（2026-11-15）：`list_agent_sessions` 可选返回 `lastCom
 - 岛屿设置 `fly-island-settings` 的 `gameDoNotDisturb`（布尔，默认 true）2026-11-11 重新可以设置（通用 → 岛屿 → 游戏模式）：只有明确存为 false 才关；`gameAutoTuck` 仍按默认 false 读取。字段名和类型不变，没有新 key。
 - 岛屿设置 `fly-island-settings` 2026-11-17（3.2.6）新增 `ctrlWheelPages`（布尔，默认 false）：只有明确存为 true 才开，展开时按住 Ctrl 滚动滚轮按顶栏顺序切页。旧数据缺失或类型无效时为关。没有新 key。
 - 开机自启（2026-11-17，3.2.6）：注册表值名仍是 `Fly Island`，命令行改为 `"<exe>" --autostart`，用来区分开机启动（岛屿显示时不抢焦点，QQ / 微信监听与网易云插件自动安装错峰延后）。旧版本写的无参数值照常生效，启动一分钟后在后台改写成新格式一次。命令 `get_launch_at_startup` / `set_launch_at_startup` 不变。
+- 自启更名迁移遇到两份 Run 记录时，保留 `Fly Island` 的启动命令和 Windows 启用状态，清理旧名称的重复记录。只有旧名称时，用当前可执行文件和 `--autostart` 注册新值，保留原启用状态。成功写入新值后清理旧记录。
 - 卸载清理（2026-11-17，3.2.6）：可执行文件新增命令行参数 `--remove-agent-hooks`，由卸载程序在勾选「Delete the application data」且不是更新卸载时调用（`src-tauri/nsis/installer-hooks.nsh` 的 `NSIS_HOOK_PREUNINSTALL`），只删 Codex 受管区块、Claude Code 里带 `fly-island-agent-` 签名的条目和回复标记规则文件，随后退出，不启动岛屿。
 - 新增 Tauri 命令 `set_island_game_quiet`（`quiet: boolean`，2026-11-17）：前端把游戏模式的 quiet 告诉原生侧，贴边的岛在游戏全屏时不再命中、不置顶、不抢焦点。
 - 岛屿设置 `fly-island-settings` 新增 `positionLocked`（布尔，默认 false）：只在明确保存为 true 时禁止拖动。旧数据缺失或类型无效时保持可拖动。`set_island_interaction` 增加可选参数 `positionLocked`，缺失时按 false；`start_island_drag` 在锁定时不启动拖动。复位和贴边隐藏不受影响。
@@ -209,6 +214,7 @@ Codex 会话摘要（2026-11-15）：`list_agent_sessions` 可选返回 `lastCom
 
 - 剪贴板独立窗口（2026-11-13）：岛屿设置新增 `clipboardDetached`（布尔，默认 false；开启后点剪贴板入口或按剪贴板快捷键打开 `clipboard` 窗口而不是展开岛）。localStorage 新增 `fly-island-clipboard-window-pinned`（`"false"` 为不置顶，缺失或其他值为置顶，即默认置顶）。新命令 `open_clipboard_window`、`show_clipboard_window`、`close_clipboard_window`（创建窗口的命令为 async，避免 Windows IPC 线程死锁）和 `show_clipboard_history_island`（剪贴板快捷键事件改由主窗口前端按设置分流，岛内打开时由它显示并聚焦主窗口）。窗口位置存应用数据目录 `clipboard-window.json`。权限新增 `core:window:allow-set-always-on-top`。
 - 剪贴板（2026-11-13）：`fly-island-settings.clipboardVisibleRows` 现可设置为 3–8 的整数，缺失或非法值为 4；`set_clipboard_history_settings` 的 `maxItems` 范围扩为 5–500，默认 30，命令、数据字段和历史文件格式不变。
+- 剪贴板悬停预览由 `fly-island-settings.clipboardHoverPreview` 控制，只有布尔值 true 开启。岛内和独立剪贴板窗口共享此偏好。
 - 配色（2026-11-14）：`fly-island-settings` 新增 `colorScheme`（`"dark"` / `"light"` / `"system"`，缺失或未知值为 `"dark"`），属于外观字段，进外观预设，恢复默认外观会复位。三种自定义颜色字段格式不变；值等于任一配色的默认值时视为跟随配色（`features/appearance/theme.ts`）。新命令 `set_settings_window_theme(dark: boolean)`：只在设置窗口调用，设置它的 DWM 标题栏深浅和窗口底色，无返回值；自有 Rust 命令，不需要新权限。`tauri.conf.json` 去掉 settings、clipboard 窗口固定的 `"theme": "Dark"`。
 - 质感（2026-11-14）：`fly-island-settings` 新增 `material`（`"classic"` / `"liquidGlass"` / `"frostedGlass"`），取代旧字段 `appearanceMode`（`"classic"` / `"liquidGlass"`）。读取时 `material` 合法就用它；否则旧的 `appearanceMode: "liquidGlass"` 迁移为 `"liquidGlass"`，其余为 `"classic"`；保存时不再写 `appearanceMode`（`normalizeLayoutSettings.ts`）。属于外观字段，进外观预设。`set_island_interaction` 的 `glassEnabled` 在两种玻璃下都为 `true`，原生侧照旧只回 `"css-fallback"`。
 - v3.2.6（2026-11-18）：
@@ -226,6 +232,7 @@ Codex 会话摘要（2026-11-15）：`list_agent_sessions` 可选返回 `lastCom
 - 新目录：`src-tauri/src/plugin_host/`、`src/features/plugins/`、`plugins/<id>/`（独立 crate）、`plugins/sdk/`、`docs/plugins/`。
 - 命令：`get_plugins()`、`get_plugins_index()`、`install_plugin(id)`、`set_plugin_enabled(id, enabled)`、`uninstall_plugin(id)`、`set_plugin_setting(id, key, value)`、`run_plugin_action(id, action)`、`configure_plugins(developerMode, indexUrl)`、`load_development_plugin(directory)`。
 - 事件：`plugins-changed`（无敏感数据；前端重新 get_plugins）。stdio RPC：`initialize`、`action`、`publish`，停止时可发送无 id 的可选 `shutdown` 通知；旧 v1 插件仍由宿主限时结束，完整 schema 见 `docs/plugins/api.md`。
+- 面板页（2026-11-16 新增，向后兼容）：manifest 可声明 `permissions/contributes` 的 `panel` 与 `panel.icon`（`battery`、`heart-pulse`、`activity`、`timer`、`gauge`、`puzzle`）；`publish` 多一个可缺省的 `panel`（`headline`、`note`、最多 16 行 `rows`、最多 4 个 manifest 已声明动作 id、`attention`），行含 `percent`（0–100）与 `countdownTo`（Unix 毫秒，宿主本地倒数）。`get_plugins()` 的 `live.<id>` 相应多 `panel`（可为 null）。没有声明的旧插件不受影响；不认识的 `panel` 字段或动作会让该次 publish 被拒。宿主只在快照确实变化时发 `plugins-changed`，重复 publish 不再触发前端重读。
 - manifest：`fly-island-plugin.json`；发布索引：`plugins-index.json`。现有命令、事件、窗口、localStorage key、latest.json 格式和更新端点保持兼容。
 - v3.2.6（2026-11-18，第三轮手测后）：`fly-island-settings` 兼容新增 `todoVisibleRows`（整数 3–12，默认 8，即默认面板高度上限原本就放得下的行数，老用户观感不变）。新增命令 `add_file_shelf_welcome(fileName, content)`：首次启动时把欢迎说明写到应用数据目录 `welcome/<fileName>.txt` 并放进文件中转。首次启动（从未保存过设置和待办）时待办列表带一条欢迎待办，按普通待办保存在 `fly-island-todos`。
 
@@ -234,3 +241,16 @@ Codex 会话摘要（2026-11-15）：`list_agent_sessions` 可选返回 `lastCom
 - `search_weather_cities({ name, language }) → { name, latitude, longitude }[]`：name 为去空白后 2–100 字符的城市名，language 为 `zh` 或 `en`（其它值按 en）；最多八项，按行政级别与人口排序，过滤低质量同名点，显示名合并城市、行政区、国家并去重；Open-Meteo 结果质量不足时用 Nominatim 补充一项。
 - `locate_weather({ language }) → { location: { name, latitude, longitude }, source: "windows" | "ip" }`：只在用户点击时同时请求 Windows Geolocator 和 `ipwho.is` 网络粗定位；Windows 有坐标时用 Nominatim 反向解析城市，否则用 `ipwho.is` 返回的本地化城市名。坐标不写入 Rust 文件或独立位置记录，错误由前端显示可操作提示。
 - `get_current_weather({ latitude, longitude }) → { temperature, code, observedAt, fetchedAt }`：校验地理坐标；temperature 为摄氏数值，code 为 WMO weather_code，两个时间均为 Unix 毫秒。天气与地理编码命令异步请求固定 HTTPS 服务，不新增事件、Tauri 权限或原生持久化文件。
+
+- 护眼插件（2026-11-17）：id `eye-care`，runtime `eye-care.exe`，permissions `panel` / `desktop-windows`，panel icon `heart-pulse`；设置 key `period`（分钟字符串）、`rest-minutes`（整数分钟字符串，1–60）、`idle`（分钟字符串）、`allow-skip`（布尔）、`language`（`zh-CN` / `en`）；动作 `rest_now`。升级时将旧 `rest` 秒数（包括旧清单默认值）换算为分钟后向上取整，旧小数分钟同样向上取整为至少 1 分钟；插件兼容读取旧 key，新 key 优先。三个时长以 manifest 的 `number` 类型（必填 min / max，保存值仍是字符串）声明并自动保存，其他设置类型不变。复用 API v1；既有宿主命令、事件和 Tauri 窗口 label 保持兼容，0.2.0 的新增窗口契约见下文。
+
+## 护眼宿主窗口（0.2.0，2026-11-19）
+
+- 新增按需窗口标签 `eye-care-rest-<serial>-<screen>` 与页面入口 `?window=eye-care`；不改旧的四个窗口。
+- 新增命令 `get_eye_care_break()`、`show_eye_care_break_window()`，仅操作已登记的休息窗口；事件 `eye-care-break-changed` 为可空的 `{deadline, canSnooze, canSkip, language}`。独立 capability 只允许休息窗口监听/取消监听事件，不授予 opener/updater。
+- 插件 id、既有设置 key 与计时迁移不变，manifest 新增 `snooze_10/15/20/25/30` 和 `skip` 动作；状态机仍校验阶段、一次推迟和跳过权限。`rest_now` 保留。
+- 新宿主仅为该受支持清单的初始化 settings 注入保留键 `_host-eye-care-windows: true`；该键不写入注册文件，也不是用户设置。旧宿主缺少标记时，0.2.0 显示升级说明，不假装已覆盖显示器；旧插件清单不会触发宿主窗口，避免双重遮罩。
+
+
+- 设备电量与音频使用固定插件 id device-battery。命令 device_battery_read(progress?)、device_battery_audio(speakerId, headsetId, target?) 仅对已启用的市场包生效，调用端不提供可执行文件路径。音频绑定存放于 fly-island-device-battery 的 speakerId / headsetId。
+- 日历标记使用现有 fly-island-native-plugins / fly-island-native-plugins-disabled 的 calendarMarks id。

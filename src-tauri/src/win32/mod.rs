@@ -11,6 +11,7 @@ pub(crate) mod drives;
 pub(crate) mod desktop_duplication;
 pub(crate) mod folder_dialog;
 pub(crate) mod file_dialog;
+pub(crate) mod fonts;
 pub(crate) mod hotkey;
 pub(crate) mod icon;
 pub(crate) mod input;
@@ -40,3 +41,5 @@ pub(crate) mod window;
 
 pub(crate) mod media_plugin_registry;
 pub(crate) mod media_plugin_elevation;
+
+pub(crate) mod eye_care;

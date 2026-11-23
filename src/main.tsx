@@ -7,6 +7,7 @@ import "./styles/base.css";
 import { IslandApp } from "./windows/island/IslandApp";
 import { TranslationWindow } from "./windows/translation/TranslationWindow";
 import { SettingsWindow } from "./windows/settings/SettingsWindow";
+import { EyeCareWindow } from "./windows/eye-care/EyeCareWindow";
 import { ClipboardWindow } from "./windows/clipboard/ClipboardWindow";
 import { SearchWindow } from "./windows/search/SearchWindow";
 import { PreviewWindow } from "./windows/preview/PreviewWindow";
@@ -64,7 +65,9 @@ async function mountApp() {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
       <I18nProvider>
-        {windowKind === "translation" ? (
+        {windowKind === "eye-care" ? (
+          <EyeCareWindow />
+        ) : windowKind === "translation" ? (
           <TranslationWindow />
         ) : windowKind === "settings" ? (
           <SettingsWindow />

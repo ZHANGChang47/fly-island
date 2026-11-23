@@ -4,6 +4,7 @@ const ALL_SETTINGS_CATEGORIES = [
   "appearance",
   "todos",
   "music",
+  "devices",
   "translation",
   "clipboard",
   "search",
@@ -27,7 +28,7 @@ export type SettingsGroup = "basics" | "features" | "agents";
  */
 export const SETTINGS_GROUPS: readonly { label: SettingsGroup | null; categories: readonly SettingsCategory[] }[] = [
   { label: "basics", categories: ["general", "appearance"] },
-  { label: "features", categories: ["todos", "music", "translation", "clipboard", "search", "messages", "clockWeather"] },
+  { label: "features", categories: ["todos", "music", "devices", "translation", "clipboard", "search", "messages", "clockWeather"] },
   { label: "agents", categories: ["agents", "agentConnect"] },
   { label: null, categories: ["plugins", "about"] },
 ];

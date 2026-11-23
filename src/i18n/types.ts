@@ -14,6 +14,9 @@ import type { ClipboardText } from "./sections/clipboard";
 import type { FileShelfText } from "./sections/fileShelf";
 import type { FileSearchText } from "./sections/fileSearch";
 import type { FilePreviewText } from "./sections/filePreview";
+import type { DeviceBatteryText } from "./sections/deviceBattery";
+import type { EyeCareText } from "./sections/eyeCare";
+import type { PluginPanelText } from "./sections/pluginPanel";
 import type { SettingsText } from "./sections/settings/index";
 
 export type LocaleCode = "zh-CN" | "en";
@@ -50,6 +53,12 @@ export type Translations = {
   fileSearch: FileSearchText;
 
   filePreview: FilePreviewText;
+
+  /** A plugin's own page in the island. */
+  pluginPanel: PluginPanelText;
+
+  eyeCare: EyeCareText;
+  deviceBattery: DeviceBatteryText;
 
   settings: SettingsText;
 };

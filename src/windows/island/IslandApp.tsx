@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { visibleCollapsedSlots } from "../../features/appearance/collapsedLayout";
 // First: the message panels it loads bring CSS that must come before the page panels' and the shell's.
+import { useLowBatteryAlert } from "../../features/device-battery/useLowBatteryAlert";
 import { useIslandNotices } from "./useIslandNotices";
 // The page panels; before IslandShell so their CSS keeps its place in the cascade.
 import { IslandPages } from "./IslandPages";
@@ -120,6 +121,10 @@ export function IslandApp() {
   });
   // Ctrl+Shift+G and the tray item route to the search page (local file-search feature).
   useIslandSearchShortcut(openIslandPage);
+  const batteryAlert = useLowBatteryAlert(
+    features.pluginPages?.some((entry) => entry.id === "device-battery") ?? false,
+    mode === "collapsed" && !isTucked && !game.quiet && !hasMessagePreview && quotaAlert === null,
+  );
   const { alertedSession, approvals: agentApprovals, agentCardHeight } = useIslandAgentAlerts({
     sessions: agentSessions,
     unseen: unseenAgentSessions.keys,
@@ -132,6 +137,8 @@ export function IslandApp() {
   });
   const { fileShelf, isShelfDropping } = useIslandShelf(settings, navigation);
   const pickerOpen = useIslandPickerOpen();
+  // The plugin page open, if any: its page fits the entries and buttons the plugin reports.
+  const pluginPage = features.pluginPages?.find((info) => info.page === page);
   const expandedIslandHeight = Math.max(pickerOpen && page === "todo" ? TODO_DATE_PICKER_EXPANDED_ISLAND_HEIGHT : 0, getExpandedIslandHeight({
     page,
     todoPageMode,
@@ -150,6 +157,7 @@ export function IslandApp() {
     agentAlertRowHeight: agentCardHeight,
     settingsContentHeight,
     shelfItems: fileShelf.items.length,
+    pluginPanel: pluginPage ? { rows: pluginPage.rows, actions: pluginPage.actions } : undefined,
   }));
   const scheme = useDocumentTheme(settings);
   const colors = useMemo(() => resolveSchemeColors(settings, scheme), [settings, scheme]);
@@ -251,6 +259,7 @@ export function IslandApp() {
         features={features}
         shelfCount={settings.shelfEnabled && settings.shelfShowCount ? fileShelf.items.length : null}
         quotaAlert={quotaAlert}
+        batteryAlert={batteryAlert}
         onOpenPage={openEnabledPage}
         onWindowDragStart={startIslandDrag}
         onCollapse={collapseIsland}

@@ -20,7 +20,7 @@ English: backups cover app storage and explicitly selected user-data files, impo
 | 设置、预设、各功能开关、语言 | WebView2 的 `localStorage` | 前端各 feature 的 `storage.ts` |
 | 音乐全局快捷键 | 同一 localStorage：`fly-island-music-shortcuts` 保存 `{ playPause, previous, next }`，默认均为空；主窗口启动和修改后同步到 Rust，注册结果仅在原生内存保存 | `features/media/storage.ts`、`useMusicShortcuts.ts`；原生 `media_control/hotkeys.rs` |
 | 托盘图标可见性 | 同一 localStorage：`fly-island-tray-visible`，默认显示；主窗口启动时同步到 Rust，托盘菜单隐藏时由事件回写 | `windows/settings/storage.ts`、`windows/island/useTrayIntegration.ts`；原生 `tray.rs` |
-| 岛屿字号、刘海基准尺寸、额度环筛选 | `fly-island-settings`，字段见 [对外契约](contracts.md) | `features/appearance/` |
+| 岛屿字体、字号、刘海基准尺寸、额度环筛选 | `fly-island-settings`。字体模式为 `fontFamily`，本机字体名称为 `localFontFamily`。其他字段见 [对外契约](contracts.md) | `features/appearance/` |
 | WorkBuddy 官网登录与余额 | `%LOCALAPPDATA%/com.flyisland.app/workbuddy-web/WebView2` 保存独立浏览器配置。同级 `connected` 文件记录已成功连接。积分汇总缓存在内存，有效结果缓存 5 分钟。额度读取成功后，把独立配置里的 WorkBuddy 域 Cookie 备份到 Windows 凭据管理器（`com.flyisland.app.workbuddy-web`），保留过期时间和 Cookie 属性。`cookies-active` 指向 `cookies-0`…`cookies-7` 或 `cookies-alt-0`…`cookies-alt-7` 的完整一组，旧版没有索引时读取 `cookies-0`…`cookies-7`。启动时补回缺失的可用 Cookie。断开时清除浏览数据、凭据管理器副本和连接标记 | `agent_status/workbuddy_connection.rs`、`agent_status/workbuddy_cookie_vault.rs`、`agent_status/workbuddy_usage.rs` |
 | Z Code Coding Plan API Key 与平台 | Windows 凭据管理器（service `com.flyisland.app.zcode-coding-plan`，account `usage`）保存 `{ platform, apiKey }`；平台为 `bigmodel` / `zai`，清除时将 Key 设为 null 并保留平台。Key 不进入 localStorage 或明文文件。API Key 优先查询，未配置时回退到 Z Code 桌面版登录；额度缓存仅在内存保存 5 分钟，设置变化后清除并立即重新查询 | `agent_status/zcode_api_key.rs`、`agent_status/zcode_usage.rs` |
 | 贴边收起样式 | 原有 `fly-island-settings` 对象的 `tuckStyle` 字段：`edge` / `line` / `hidden`，缺失或非法值按 `edge`；沿用跨窗口 storage 同步，不新增文件或 key | `features/appearance/storage.ts`、`settingsDefaults.ts`、`normalizeBehaviorSettings.ts`；通过 `windows/island/useIslandWindow.ts` 同步至原生内存状态 |
@@ -50,6 +50,7 @@ English: backups cover app storage and explicitly selected user-data files, impo
 | 开机自启 | `HKCU\...\Run` 下的值 `Fly Island` | `system` |
 | 剪贴板历史（条目、收藏、备注与剪贴板设置）；图片原图和 128px 缩略图 | 应用数据目录（`clipboard-history.json`；图片在 `clipboard-images/`），可在设置里移到自选文件夹，位置记在应用数据目录的 `clipboard-location.json` | `clipboard_history/store.rs`、`clipboard_history/location.rs` |
 | 剪贴板独立窗口上次关闭时的位置 | 应用数据目录（`clipboard-window.json`） | `clipboard_window/bounds.rs` |
+| 剪贴板悬停预览 | WebView2 的 `localStorage`，在 `fly-island-settings.clipboardHoverPreview` 保存。默认关闭，岛内和独立窗口共用 | `features/appearance/storage.ts` |
 | 通知、微信消息摘要、邮件正文 | 仅保存在内存中 | 各服务模块 |
 | 微信摘要和最小化时隐藏任务栏图标的偏好 | WebView2 的 `localStorage`，见 [对外契约](contracts.md) | `features/messages/wechat/storage.ts` |
 | 微信辅助功能恢复记录 | 应用数据目录（`wechat-accessibility.json`），记录进程 ID 和启动时间 | `wechat_reminders/accessibility.rs` |
@@ -91,3 +92,11 @@ WebView2 localStorage 的 `fly-island-native-plugins` 记录安装的内置插�
 前端 `features/weather/storage.ts` 通过安全读写保存 WebView2 localStorage：`fly-island-clock-weather` 存两个显示开关和用户选择的城市名/经纬度，`fly-island-weather-cache` 存一条城市坐标、摄氏温度、WMO code、观测时间与获取时间（Unix 毫秒）。安装记录沿用 `fly-island-native-plugins` 的 `clockWeather` id；卸载保留城市、显示偏好和缓存；重装只打开两个显示开关。开关与城市更新各自从最新记录合并，搜索本身不写入城市。缓存超过三小时不显示。
 
 Rust `weather/` 只按显式城市搜索或已保存坐标请求 Open-Meteo；城市搜索结果质量不足时会向 `nominatim.openstreetmap.org` 补充一项。用户点击定位时才同时请求 Windows Geolocator 和 `ipwho.is` 的网络大致位置；Windows 坐标用 Nominatim 反向解析城市。坐标只发给这些地理编码/天气服务，不写应用数据文件、凭据或独立位置记录，也不在后台自动定位。前端订阅在关闭天气、关闭插件或卸载后停止刷新；同窗口共享请求和缓存。说明见 [时间与天气](../plugins/clock-weather.md)。
+护眼插件 `eye-care` 的非秘密配置复用 `plugins-state.json` 中对应插件的 settings（`period`、`rest-minutes`、`idle`、`allow-skip`、`language`）。周期、剩余时间和本轮推迟标记仅在插件内存；重启 / 保存设置后从完整用眼周期开始。不保存输入记录，不新增文件或 localStorage key。
+
+护眼宿主休息窗口的显示器列表、首帧状态、重试和会话令牌只在内存；不新增持久化文件或 localStorage key。`_host-eye-care-windows` 是初始化时临时注入的能力标记，不持久化。
+
+
+## 日历标记、MiniMax Code 与设备电量
+
+日历标记沿用内置插件的安装/停用记录。设备的音频绑定写入 WebView localStorage 的 fly-island-device-battery，设备读数及低电量状态仅在内存。MiniMax 可选密钥走宿主凭据管理器，额度和会话只读 MiniMax 本机数据。审批接入由用户在插件设置中显式启用，仅修改 ~/.minimax/hooks.json 内本插件登记的处理器，临时审批保存在 %LOCALAPPDATA%/fly-island-minimax/approvals.json。

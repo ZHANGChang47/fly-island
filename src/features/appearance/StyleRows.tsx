@@ -6,7 +6,8 @@ import { SettingsToggleRow } from "../../components/settings/SettingsToggleRow";
 import { useTranslation } from "../../i18n";
 import { GLASS_BLUR } from "./settingsLimits";
 import { DEFAULT_SETTINGS, ISLAND_FONT_PERCENT, isGlass, MAX_COLLAPSED_SCALE, MAX_EXPANDED_SCALE, MIN_COLLAPSED_SCALE, MIN_EXPANDED_SCALE } from "./settings";
-import type { ColorScheme, IslandFont, IslandSettings, Material, PageButtonStyle } from "./types";
+import type { ColorScheme, IslandSettings, Material, PageButtonStyle } from "./types";
+import { IslandFontRow } from "./IslandFontRow";
 
 const percent = (value: number) => `${Math.round(value)}%`;
 const times = (value: number) => `${value.toFixed(2)}x`;
@@ -115,23 +116,9 @@ export function FontRows({ settings, onSettingsChange, onFontSizePreview }: Rows
 }) {
   const t = useTranslation();
   const text = t.settings.appearance;
-  const fonts = [
-    { value: "system", label: text.systemFont },
-    { value: "pixel", label: text.pixelFont },
-  ] as const;
   return (
     <>
-      <SettingsRow
-        title={text.font}
-        control={
-          <SettingsChoice<IslandFont>
-            value={settings.fontFamily}
-            options={fonts}
-            ariaLabel={text.fontLabel}
-            onChange={(fontFamily) => onSettingsChange({ ...settings, fontFamily })}
-          />
-        }
-      />
+      <IslandFontRow settings={settings} onSettingsChange={onSettingsChange} />
       <SettingsSliderRow
         title={text.fontSize}
         value={settings.islandFontPercent}

@@ -22,6 +22,8 @@
 
 各项数据存在哪里见 [data-storage.md](data-storage.md)。
 
+外观设置选择本机字体时，`features/appearance/api.ts` 经 `system/fonts.rs` 异步调用 `win32/fonts.rs` 枚举已安装字体。字体名称随外观设置保存，主岛和设置预览复用 `features/appearance/localFont.ts` 生成的字体栈。
+
 待办每日 Markdown 的可选反向同步由 `features/todos/todoMarkdownSync.ts` 串行协调（稳定采样、三方合并、防回环），`useTodoFileSync.ts` 负责日期/目录生命周期和低频轮询；Rust `system/todo_sync.rs` 提供受限读取及版本比较写入。默认关闭时仍走原 `todo_export.rs` 单向导出。偏好、恢复副本与数据流见 [data-storage.md](data-storage.md)，命令契约见 [contracts.md](contracts.md)。
 
 配置迁移（issue #87）由前端 `features/config-transfer/` 与原生 `config_transfer/` 负责；Win32 JSON 对话框封装在 `win32/file_dialog.rs`。原生模块在服务初始化前恢复允许的数据文件；所有 WebView 在 React 挂载前等待启动门禁，只有主窗口应用 localStorage 后确认完成。插件、剪贴板与 Agent 集成的可迁移部分由各自 `transfer.rs` 提供，凭据不跨边界；异常保留可重试的备份和文件撤销日志。格式见 [contracts.md](contracts.md)。
@@ -72,3 +74,9 @@ main.tsx → windows/ → features/ → components/、lib/、utils/、i18n/、st
 内置插件 `clockWeather` 通过 `features/plugins/native` 的安装态启用，并声明独立的时间与天气设置页。`features/weather/` 收口城市与缓存存储、IPC、WMO 纯映射及时间/天气叶子组件；`src-tauri/src/weather/` 封装 Open-Meteo 请求。主窗口 `useCollapsedTodo` 低频预留状态位宽度，`useCollapsedStatusWidth` 测量实际状态兄弟元素保护窄岛文字。时间的分钟状态留在叶子中，不驱动窗口重渲染。数据与契约见对应文档。
 
 排列编辑器和 `IslandPreview` 共享 `features/appearance/islandPreviewStyle.ts` 的外观变量。通用排序 hook 的 FLIP/指针跟随为可选参数，仅编辑器启用；页面入口与其它调用者保持原有交互。
+### 护眼休息窗口（插件 0.2.0）
+
+`plugins/eye-care` 只负责单调时钟、空闲/全屏查询与休息动作；`plugin_host/service` 将已启用插件的有界快照转交 `src-tauri/src/eye_care`。该模块按需创建 `eye-care-rest-*`，页面入口 `?window=eye-care`，组合位于 `src/windows/eye-care`，UI 位于 `src/features/eye-care`。旧 GDI 按钮、遮罩及进程发现不再使用。`win32/eye_care.rs` 只约束这些窗口自身的层级；现有窗口标识与置顶设置保持兼容。
+
+
+市场插件日历标记由 features/todos/calendar-marks 提供。设备电量的界面和绑定在 features/device-battery，原生读取在 src-tauri/src/device_battery，仅执行宿主管理的市场包。MiniMax Code 的只读会话与额度、可选审批接入位于 plugins/minimax。

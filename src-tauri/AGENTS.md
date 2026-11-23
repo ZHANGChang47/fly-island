@@ -19,7 +19,7 @@ src-tauri/src/
 │                            #   workbuddy_sessions.rs：WorkBuddy 桌面端本地会话记录；workbuddy_connection.rs / workbuddy_auth.rs / workbuddy_cookie_vault.rs / workbuddy_usage.rs：WorkBuddy 官网独立登录窗口、续期策略、凭据副本与积分缓存
 │                            #   zcode_credentials.rs / zcode_api_key.rs / zcode_usage.rs：Z Code 桌面凭据、Credential Manager 中的 Coding Plan API Key 与额度查询
 ├── app_log/                 # 问题排查日志（默认关闭）：开启后把标准错误接到管道写入 logs/，前端的报错经 append_app_log 写入；file.rs 负责一份备份的轮转
-├── system/                  # 开机自启（注册表）、更新代理与配置、待办 Markdown 导出与受限同步读写（todo_sync）、不合成 Alt 键地聚焦自己的窗口（window_focus）
+├── system/                  # 开机自启（注册表）、更新代理与配置、待办 Markdown 导出与受限同步读写（todo_sync）、已安装字体（fonts）、不合成 Alt 键地聚焦自己的窗口（window_focus）
 ├── clipboard_history/
 ├── config_transfer/         # 配置备份 / 迁移：原生文件对话框、受限数据与音效收集、启动恢复与撤销日志
 ├── file_shelf/              # 文件中转：路径列表（file-shelf.json）与命令；拖出调用 win32/ole.rs
@@ -38,7 +38,7 @@ src-tauri/src/
 ├── notification_diagnostics.rs
 └── win32/                   # Win32 / COM 的安全封装，crate 中唯一允许 unsafe 的地方：window（窗口查询、枚举、前台切换）、
                              # message_window（隐藏消息窗口与安全的窗口过程）、hotkey、clipboard、shell_hook、input、
-                             # com（COM / WinRT 初始化守卫）、audio、ole（文件拖出）、process / process_times、process_job（插件进程树退出清理）、registry、
+                             # com（COM / WinRT 初始化守卫）、audio、fonts（DirectWrite 字体列表）、ole（文件拖出）、process / process_times、process_job（插件进程树退出清理）、registry、
                              # notification_state（前台是否有全屏程序）、shell_open（不弹系统错误框地打开协议）、
                              # task_switcher（让主窗口不进 Alt+Tab）、known_folder（下载文件夹等已知文件夹）、
                              # icon、chinese、process_env / process_tree / process_memory、file_version（exe 文件版本）、std_handle（重定向标准错误、本地时间）、uia_tabs / uia_list、caption_close、taskbar
@@ -108,5 +108,7 @@ src-tauri/src/
 - clippy lint 在 `Cargo.toml` 的 `[lints.clippy]` 中声明（`undocumented_unsafe_blocks`、`unwrap_used`、`expect_used` 为 deny），测试代码的放行写在 `clippy.toml`；不要在源文件中用 `#![warn]` / `#[allow]` 重复声明这些 lint。`cargo clippy --all-targets` 保持 0 告警；个别确实无法消除的默认 lint（例如参数即 IPC 契约的命令触发 `too_many_arguments`）在该项上用带 `reason` 的 `#[expect(...)]`。
 - 验证：`cargo test --manifest-path src-tauri/Cargo.toml` + `pnpm tauri build --no-bundle`。涉及窗口、托盘、注册表行为的改动，在风险需要时用 `pnpm tauri dev` 手动检查折叠态、展开态、贴边收起和托盘隐藏。
 - 成功生成 release 可执行文件后，按根目录规则同步桌面快捷方式。
+
+市场设备读取入口位于 device_battery，由插件宿主提供受管理的安装目录。护眼休息窗口位于 eye_care，Win32 层级控制位于 win32/eye_care.rs。
 
 插件 API v1：`plugin_host/` 为 manifest / protocol / packages / storage / process / service 分层，插件源码在仓库 `plugins/<id>/` 独立 crate；这些 crate 不加入主程序 workspace。新增插件不能把网络、数据库或客户端依赖引入主程序。

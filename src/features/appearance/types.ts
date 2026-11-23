@@ -9,7 +9,7 @@ export type TranslationTarget = "window" | "island";
 export type Material = "classic" | "liquidGlass" | "lightGlass" | "frostedGlass";
 /** Colour scheme of the island and the windows: dark, light, or whichever Windows uses. */
 export type ColorScheme = "dark" | "light" | "system";
-export type IslandFont = "system" | "pixel";
+export type IslandFont = "system" | "pixel" | "local";
 export type PageButtonStyle = "capsule" | "icon" | "iconLabel";
 /** Shape of the island's corners: CSS `corner-shape: squircle`, or a circular arc. */
 export type IslandCornerShape = "squircle" | "round";
@@ -64,6 +64,8 @@ export type IslandSettings = {
   auroraAura: boolean;
   colorScheme: ColorScheme;
   fontFamily: IslandFont;
+  /** The installed font family in "local" mode. Empty uses the default stack. */
+  localFontFamily: string;
   islandFontPercent: number;
   pageButtonStyle: PageButtonStyle;
   glassIntensity: number;
@@ -253,6 +255,8 @@ export type IslandSettings = {
   ctrlWheelPages: boolean;
   /** Clipboard: rows visible in the island before scrolling (3–8). */
   clipboardVisibleRows: number;
+  /** Show an entry's full content when the pointer rests over it. */
+  clipboardHoverPreview: boolean;
   /** Todos: rows the todo page shows before it scrolls (3–12), within the panel height limit. */
   todoVisibleRows: number;
   /** Clipboard: open history in its own window instead of inside the island. */

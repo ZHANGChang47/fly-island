@@ -48,6 +48,7 @@ export const APPEARANCE_SETTING_KEYS = [
   "auroraAura",
   "colorScheme",
   "fontFamily",
+  "localFontFamily",
   "islandFontPercent",
   "pageButtonStyle",
   "glassIntensity",

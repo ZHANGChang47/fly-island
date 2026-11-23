@@ -19,10 +19,13 @@ import { ClipboardHistoryPanel } from "../../features/clipboard/ClipboardHistory
 import type { useClipboardHistory } from "../../features/clipboard/useClipboardHistory";
 import { MusicPlayerPanel } from "../../features/media/MusicPlayerPanel";
 import type { useMediaState } from "../../features/media/useMediaState";
+import { DeviceDashboard } from "../../features/device-battery/DeviceDashboard";
+import { PluginPanel } from "../../features/plugins/PluginPanel";
 import { FileShelfPanel } from "../../features/file-shelf/FileShelfPanel";
 import type { useFileShelf } from "../../features/file-shelf/useFileShelf";
 import { FileSearchPanel } from "../../features/file-search/FileSearchPanel";
 import { getTodoScrollStartRows } from "./layout";
+import { isPageEnabled, isPluginPage, pluginIdOfPage } from "./features";
 import type { useIslandAgentAlerts } from "./useIslandAgentAlerts";
 import type { useIslandFeatures } from "./useIslandFeatures";
 import type { useIslandNavigation } from "./useIslandNavigation";
@@ -133,6 +136,7 @@ export function IslandPages({
       {page === "clipboard" && (
         <ClipboardHistoryPanel
           snapshot={clipboardHistory}
+          hoverPreview={settings.clipboardHoverPreview}
           onCopyItem={copyClipboardHistoryItem}
           onToggleFavorite={(id) => void toggleClipboardHistoryFavorite(id)}
           onUpdateNote={updateClipboardHistoryItemNote}
@@ -144,6 +148,9 @@ export function IslandPages({
       {page === "translation" && <TranslationPanel isOpen={mode === "expanded"} onOpenSettings={() => openSettingsWindow("translation")} />}
       {page === "shelf" && <FileShelfPanel shelf={fileShelf} isDropTarget={isShelfDropping} revealOnDoubleClick={settings.shelfDoubleClick === "reveal"} />}
       {page === "search" && <FileSearchPanel />}
+      {page === "plugin:device-battery"
+        ? mode === "expanded" && isPageEnabled(page, features) && <DeviceDashboard onOpenSettings={() => openSettingsWindow("devices")} />
+        : isPluginPage(page) && <PluginPanel key={page} pluginId={pluginIdOfPage(page)} />}
       {page === "todo" && (
         <TodoNotebook
           {...notebookProps}
